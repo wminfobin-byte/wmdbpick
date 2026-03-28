@@ -268,7 +268,7 @@
     <h1><img src="logo.png" alt="WM">WM DB 유입 예상 대시보드</h1>
     <div class="header-right">
         <span class="data-info" id="headerInfo"></span>
-        <button class="btn-upload" onclick="saveToGitHub()" id="btnSaveServer" style="display:none;background:rgba(5,150,105,0.3);border-color:rgba(5,150,105,0.5)">서버 저장</button>
+        <button class="btn-upload" onclick="saveToGitHub()" id="btnSaveServer" style="display:none;background:rgba(5,150,105,0.3);border-color:rgba(5,150,105,0.5)">동기화</button>
         <button class="btn-upload" onclick="openModal()" id="btnUpload" style="display:none">데이터 업로드</button>
         <span class="login-info" id="loginInfoBtn" onclick="showLoginModal()" style="display:none"></span>
     </div>
@@ -543,13 +543,11 @@ function applyAuthUI(){
     var infoBtn=document.getElementById('loginInfoBtn');
     infoBtn.style.display='';
     infoBtn.textContent=isLoggedIn?(currentUser+' | 로그아웃'):'로그인';
-    // 로그인 안 했으면 share 탭 활성화
-    if(!isLoggedIn){
-        document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
-        document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});
-        document.querySelector('.tab[data-tab="share"]').classList.add('active');
-        document.getElementById('tab-share').classList.add('active');
-    }
+    // 탭 활성화: 로그인 시 DB예상, 비로그인 시 DB예상
+    document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+    document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});
+    document.querySelector('.tab[data-tab="share"]').classList.add('active');
+    document.getElementById('tab-share').classList.add('active');
 }
 
 // ======================== State ========================
@@ -2509,7 +2507,7 @@ async function saveToGitHub(){
     var btn=document.getElementById('btnSaveServer');
     btn.textContent='저장 중...';btn.disabled=true;
     try{
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles});
         var content=btoa(unescape(encodeURIComponent(payload)));
         var sha='';
         try{
@@ -2524,14 +2522,14 @@ async function saveToGitHub(){
             body:JSON.stringify(body)
         });
         if(resp.ok){
-            alert('서버 저장 완료!\n다른 사람도 접속하면 바로 데이터가 보입니다.\n(반영까지 1~2분 소요)');
+            alert('동기화 완료!\n다른 사람도 접속하면 바로 데이터가 보입니다.\n(반영까지 1~2분 소요)');
         }else{
             var err=await resp.json();
             if(resp.status===401){setGHToken('');alert('토큰이 유효하지 않습니다. 다시 시도해주세요.');}
             else alert('저장 실패: '+(err.message||resp.status));
         }
     }catch(e){alert('저장 오류: '+e.message);}
-    btn.textContent='서버 저장';btn.disabled=false;
+    btn.textContent='동기화';btn.disabled=false;
 }
 
 async function loadFromJSON(){
@@ -2542,6 +2540,14 @@ async function loadFromJSON(){
         if(payload.dbData&&payload.dbData.length){
             allData=payload.dbData.map(expandRecord);
             uploadedFiles=payload.dbFiles||[];
+            if(payload.schedules)schedules=payload.schedules;
+            if(payload.attendanceData)attendanceData=payload.attendanceData;
+            if(payload.attendanceFiles)attendanceFiles=payload.attendanceFiles;
+            if(payload.attendanceMonth)attendanceMonth=payload.attendanceMonth;
+            if(payload.tbspData)tbspData=payload.tbspData;
+            if(payload.tbspFiles)tbspFiles=payload.tbspFiles;
+            if(payload.actualInflowData)actualInflowData=payload.actualInflowData;
+            if(payload.actualInflowFiles)actualInflowFiles=payload.actualInflowFiles;
             return true;
         }
     }catch(e){}
