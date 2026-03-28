@@ -873,6 +873,15 @@ async function handleTbspFile(file){
     }catch(err){alert('타임보드/스페셜 파일 오류: '+err.message);}
     hideLoading();
 }
+async function removeActualFile(idx){
+    var fn=actualInflowFiles[idx];
+    if(!confirm(fn+' 실제 유입 데이터를 삭제하시겠습니까?'))return;
+    actualInflowFiles.splice(idx,1);
+    actualInflowData=[];
+    await idbPut('actualInflowData',actualInflowData);
+    await idbPut('actualInflowFiles',actualInflowFiles);
+    updateAll();updateModalUI();
+}
 async function clearAllData(){if(!confirm('모든 데이터를 초기화하시겠습니까?'))return;allData=[];uploadedFiles=[];schedules=[];attendanceData=[];attendanceFiles=[];attendanceMonth='';tbspData=[];tbspFiles=[];actualInflowData=[];actualInflowFiles=[];await idbClear();updateAll();updateModalUI();}
 
 // ======================== Actual Inflow Data ========================
@@ -1171,7 +1180,7 @@ function updateModalUI(){
         tsum.textContent='총 '+tbspData.length.toLocaleString()+'건 (타임보드 '+tc.toLocaleString()+' / 스페셜 '+sc2.toLocaleString()+') | '+dk2[0]+' ~ '+dk2[dk2.length-1];}
     // 실제 유입 데이터
     var acEl=document.getElementById('actualFileList');
-    acEl.innerHTML=actualInflowFiles.length?actualInflowFiles.map(function(f){return'<span class="file-item file-item-actual">'+f+'</span>';}).join(''):'';
+    acEl.innerHTML=actualInflowFiles.length?actualInflowFiles.map(function(f,i){return'<span class="file-item file-item-actual">'+f+'<span class="file-del" onclick="removeActualFile('+i+')" title="삭제">&times;</span></span>';}).join(''):'';
     var acSum=document.getElementById('actualSummary');
     if(!actualInflowData.length)acSum.textContent='';
     else{
