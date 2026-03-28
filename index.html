@@ -2010,14 +2010,8 @@ function updateShareTab(){
         if(!actualInflowData.length)return'';
         var ah='<div class="share-section" id="'+prefix+'sec-actual">';
         ah+='<h3>실제 유입 분석</h3>';
-        // 예상 비교 토글
-        ah+='<div class="compare-toggle-row">';
-        ah+='<span class="compare-label">예상 비교:</span>';
-        ah+='<label class="toggle-switch"><input type="checkbox" id="'+prefix+'compareToggle" onchange="toggleActualCompare(\''+prefix+'\')"><span class="toggle-slider"></span></label>';
-        ah+='<span style="font-size:0.75rem;color:var(--slate-light);">ON시 예상 수량과 비교</span>';
-        ah+='</div>';
         ah+='<div id="'+prefix+'actualTables">';
-        ah+=buildActualInflowTables(prefix,false);
+        ah+=buildActualInflowTables(prefix,true);
         ah+='</div>';
         ah+='</div>';
         return ah;
