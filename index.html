@@ -2534,7 +2534,7 @@ async function saveToGitHub(){
 
 async function loadFromJSON(){
     try{
-        var resp=await fetch('data.json');
+        var resp=await fetch('data.json?t='+Date.now());
         if(!resp.ok)return false;
         var payload=await resp.json();
         if(payload.dbData&&payload.dbData.length){
@@ -2561,7 +2561,7 @@ async function loadFromJSON(){
     await openIDB();
     await loadFromStorage();
     if(!allData.length){await loadFromJSON();}
-    updateAll();updateScheduleUI();
+    updateAll();updateModalUI();updateScheduleUI();updatePrediction();
 })();
 </script>
 </body>
