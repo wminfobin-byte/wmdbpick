@@ -223,6 +223,17 @@
         .quick-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:white;border:1px solid var(--gray-200);border-radius:24px;font-size:0.78rem;font-weight:600;color:var(--navy);cursor:pointer;transition:all 0.2s;box-shadow:var(--shadow-sm)}
         .quick-btn:hover{background:var(--blue-bg);border-color:var(--blue);color:var(--blue);transform:translateY(-1px);box-shadow:var(--shadow)}
         .quick-btn::before{content:'\2192';font-weight:700;color:var(--blue-light);font-size:0.85rem}
+        /* Floating nav */
+        .float-nav{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:1000}
+        .float-nav-btn{width:44px;height:44px;border-radius:50%;border:none;background:var(--navy);color:white;font-size:0.7rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);transition:all 0.2s;display:flex;align-items:center;justify-content:center}
+        .float-nav-btn:hover{background:var(--blue);transform:scale(1.1)}
+        .float-nav-btn.top-btn{background:var(--blue);font-size:1rem}
+        .float-nav-menu{position:absolute;bottom:52px;right:0;background:white;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);padding:8px 0;min-width:180px;display:none}
+        .float-nav-menu.open{display:block}
+        .float-nav-menu a{display:block;padding:8px 16px;font-size:0.78rem;color:var(--navy);text-decoration:none;font-weight:500;white-space:nowrap;cursor:pointer}
+        .float-nav-menu a:hover{background:var(--blue-bg);color:var(--blue)}
+        .float-nav-menu .nav-divider{height:1px;background:var(--gray-200);margin:4px 0}
+        @media print{.float-nav{display:none}}
         /* Actual inflow upload */
         .compare-toggle-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
         .compare-toggle-row .compare-label{font-size:0.8rem;color:var(--slate);font-weight:600}
@@ -1879,11 +1890,14 @@ function updateShareTab(){
     }
     function buildQuickNav(prefix){
         var qh='<div class="quick-nav">';
-        qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-daily\')">일별 종합 예상</div>';
-        if(schedules.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-schedule\')">타임보드/스페셜 집행계획</div>';
+        var dailyLabel=prefix==='brain-'?'일별 영어+제2외 예상':prefix==='talkiz-'?'일별 톡이즈 예상':'일별 종합 예상';
+        qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-daily\')">'+dailyLabel+'</div>';
+        if(schedules.length&&prefix!=='talkiz-')qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-schedule\')">타임보드/스페셜 집행계획</div>';
         qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-media\')">매체별 예상 요약</div>';
-        if(attendanceData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-group\')">그룹별 1인 예상 분배 DB수</div>';
         if(actualInflowData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-actual\')">실제 유입 분석</div>';
+        var groupLabel=prefix==='talkiz-'?'톡이즈 1인 분배':'그룹별 1인 예상 분배';
+        if(attendanceData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-group\')">'+groupLabel+'</div>';
+        if(prefix!=='talkiz-'&&lastPredData.tierDailyEng)qh+='<div class="quick-btn" onclick="scrollToSection(\'share-sec-tier\')">계열별 예상 유입</div>';
         qh+='</div>';
         return qh;
     }
@@ -2018,7 +2032,7 @@ function updateShareTab(){
     // ========== Helper: 계열별 예상 유입 ==========
     function buildTierSection(){
         if(!lastPredData.tierDailyEng)return'';
-        var th='<div class="share-section">';
+        var th='<div class="share-section" id="share-sec-tier">';
         th+='<h3>계열별 예상 유입 수량</h3>';
         // 영어
         th+='<h4>영어</h4>';
@@ -2563,6 +2577,34 @@ async function loadFromJSON(){
     if(!allData.length){await loadFromJSON();}
     updateAll();updateModalUI();updateScheduleUI();updatePrediction();
 })();
+
+// ======================== Floating Nav ========================
+function toggleFloatMenu(){document.getElementById('floatMenu').classList.toggle('open');}
+function floatNavTo(id){document.getElementById('floatMenu').classList.remove('open');scrollToSection(id);}
+function updateFloatNav(){
+    var menu=document.getElementById('floatMenu');
+    if(!menu)return;
+    var activeTab=document.querySelector('.share-subtab.active');
+    var prefix='total-';
+    if(activeTab){var st=activeTab.dataset.sharetab;if(st==='brain')prefix='brain-';else if(st==='talkiz')prefix='talkiz-';}
+    var items=[];
+    var dailyLabel=prefix==='brain-'?'일별 영어+제2외 예상':prefix==='talkiz-'?'일별 톡이즈 예상':'일별 종합 예상';
+    items.push({id:prefix+'sec-daily',label:dailyLabel});
+    if(schedules.length&&prefix!=='talkiz-')items.push({id:prefix+'sec-schedule',label:'타임보드/스페셜 집행계획'});
+    items.push({id:prefix+'sec-media',label:'매체별 예상 요약'});
+    if(actualInflowData.length)items.push({id:prefix+'sec-actual',label:'실제 유입 분석'});
+    var groupLabel=prefix==='talkiz-'?'톡이즈 1인 분배':'그룹별 1인 예상 분배';
+    if(attendanceData.length)items.push({id:prefix+'sec-group',label:groupLabel});
+    if(prefix!=='talkiz-'&&lastPredData&&lastPredData.tierDailyEng)items.push({id:'share-sec-tier',label:'계열별 예상 유입'});
+    var h=items.map(function(it){return'<a onclick="floatNavTo(\''+it.id+'\')">'+it.label+'</a>';}).join('');
+    menu.innerHTML=h;
+}
+document.addEventListener('click',function(e){var nav=document.querySelector('.float-nav');if(nav&&!nav.contains(e.target))document.getElementById('floatMenu').classList.remove('open');});
 </script>
+<div class="float-nav">
+    <div class="float-nav-menu" id="floatMenu"></div>
+    <button class="float-nav-btn" onclick="updateFloatNav();toggleFloatMenu()" title="섹션 이동">&#9776;</button>
+    <button class="float-nav-btn top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="맨 위로">&#8593;</button>
+</div>
 </body>
 </html>
