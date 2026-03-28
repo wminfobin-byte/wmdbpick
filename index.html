@@ -173,8 +173,10 @@
         .timetable th{background:var(--gray-50);padding:8px 6px;text-align:center;font-size:0.7rem;color:var(--slate);border:1px solid var(--gray-200);font-weight:700;text-transform:uppercase;letter-spacing:0.3px}
         .timetable td{padding:5px 6px;border:1px solid var(--gray-200);text-align:center;vertical-align:middle;height:34px}
         .timetable .hour-cell{background:var(--gray-50);font-weight:600;color:var(--slate);width:64px}
-        .timetable .tt-tb{display:inline-block;background:var(--blue-pale);color:var(--blue);padding:2px 8px;border-radius:6px;font-size:0.68rem;font-weight:700;margin:1px}
-        .timetable .tt-sp{display:inline-block;background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:6px;font-size:0.68rem;font-weight:700;margin:1px}
+        .timetable .tt-tb{display:inline-block;background:var(--blue-pale);color:var(--blue);padding:2px 8px;border-radius:6px;font-size:0.68rem;font-weight:700;margin:1px;position:relative;cursor:default}
+        .timetable .tt-sp{display:inline-block;background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:6px;font-size:0.68rem;font-weight:700;margin:1px;position:relative;cursor:default}
+        .timetable [data-cost]:hover::after{content:attr(data-cost);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:3px 8px;border-radius:4px;font-size:0.68rem;white-space:nowrap;z-index:10;margin-bottom:4px}
+        .timetable [data-cost]:hover::before{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:4px solid transparent;border-top-color:#333;z-index:10}
         .timetable .tt-both{background:#fffbeb}
         .timetable .tt-cutoff td{border-top:2px dashed var(--red)}
         .timetable .tt-empty{color:var(--gray-300)}
@@ -1900,7 +1902,7 @@ function updateShareTab(){
         schedules.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=WEEK_ORDER.indexOf(s.day);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push({type:s.type,count:s.totalPredicted,breakdown:s.breakdown,dayType:s.dayType||'',adCost:s.adCost||0});});
         th+='<table class="timetable"><thead><tr><th>시간</th>';pdl.forEach(function(l){th+='<th>'+l+'</th>';});th+='</tr></thead><tbody>';
         for(var hr=0;hr<=23;hr++){var isCutoff=hr===DIST_CUTOFF_HOUR;th+='<tr'+(isCutoff?' class="tt-cutoff"':'')+'>';th+='<td class="hour-cell">'+formatHour(hr)+(isCutoff?' <span style="color:var(--red);font-size:0.65rem;">CUT</span>':'')+'</td>';
-            for(var di=0;di<7;di++){var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];if(!items.length){th+='<td class="tt-empty">-</td>';}else{var hasBoth=items.length>1;th+='<td'+(hasBoth?' class="tt-both"':'')+'>';items.forEach(function(it){var cls=it.type==='timeboard'?'tt-tb':'tt-sp';var label=it.type==='timeboard'?'TB':'SP';var tipAttr=it.adCost?' title="광고비: '+it.adCost.toLocaleString()+'만원"':'';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+dt+' '+v+'</span>';});}else{th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+it.count+'</span>';}});th+='</td>';}}th+='</tr>';}
+            for(var di=0;di<7;di++){var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];if(!items.length){th+='<td class="tt-empty">-</td>';}else{var hasBoth=items.length>1;th+='<td'+(hasBoth?' class="tt-both"':'')+'>';items.forEach(function(it){var cls=it.type==='timeboard'?'tt-tb':'tt-sp';var label=it.type==='timeboard'?'TB':'SP';var tipAttr=it.adCost?' data-cost="광고비: '+it.adCost.toLocaleString()+'만원"':'';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+dt+' '+v+'</span>';});}else{th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+it.count+'</span>';}});th+='</td>';}}th+='</tr>';}
         th+='<tr style="font-weight:700;background:#f5f6fa;"><td class="hour-cell">합계</td>';
         for(var di=0;di<7;di++){var dayTotal=0;schedules.forEach(function(s){if(WEEK_ORDER.indexOf(s.day)===di)dayTotal+=s.totalPredicted;});th+='<td>'+(dayTotal||'-')+'</td>';}
         th+='</tr>';
