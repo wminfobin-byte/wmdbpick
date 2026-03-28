@@ -1,0 +1,2290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DB 유입 예상</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root{--navy:#0f172a;--navy-light:#1e293b;--blue:#2563eb;--blue-light:#3b82f6;--blue-pale:#dbeafe;--blue-bg:#eff6ff;--slate:#475569;--slate-light:#94a3b8;--green:#059669;--green-bg:#ecfdf5;--red:#dc2626;--red-bg:#fef2f2;--purple:#7c3aed;--purple-bg:#f5f3ff;--teal:#0891b2;--amber:#d97706;--gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-300:#cbd5e1;--radius:12px;--shadow-sm:0 1px 2px rgba(0,0,0,0.05);--shadow:0 1px 3px rgba(0,0,0,0.1),0 1px 2px rgba(0,0,0,0.06);--shadow-md:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -2px rgba(0,0,0,0.1);--shadow-lg:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -4px rgba(0,0,0,0.1);--font:'Inter','Segoe UI','Malgun Gothic',system-ui,sans-serif}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:var(--font);background:var(--gray-50);color:var(--navy-light);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+        .header{background:var(--navy);color:white;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 12px rgba(0,0,0,0.15)}
+        .header h1{font-size:1.15rem;font-weight:700;display:flex;align-items:center;gap:10px;letter-spacing:-0.3px}
+        .header h1 img{height:26px;opacity:0.95}
+        .header-right{display:flex;align-items:center;gap:16px}
+        .header-right .data-info{font-size:0.75rem;opacity:0.6;font-weight:500}
+        .btn-upload{background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 18px;cursor:pointer;font-size:0.8rem;font-weight:600;transition:all 0.2s;backdrop-filter:blur(4px)}
+        .btn-upload:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.4)}
+        .tabs{display:flex;background:white;border-bottom:1px solid var(--gray-200);padding:0 32px;box-shadow:var(--shadow-sm)}
+        .tab{padding:14px 28px;cursor:pointer;border-bottom:2px solid transparent;font-weight:600;font-size:0.85rem;color:var(--slate-light);transition:all 0.2s;letter-spacing:-0.2px}
+        .tab:hover{color:var(--navy)}
+        .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+        .content{padding:24px 32px;max-width:1440px;margin:0 auto}
+        .tab-content{display:none}
+        .tab-content.active{display:block}
+        .modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.5);backdrop-filter:blur(4px);z-index:1000;justify-content:center;align-items:center}
+        .modal-overlay.active{display:flex}
+        .modal{background:white;border-radius:16px;padding:28px;max-width:680px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
+        .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--gray-200)}
+        .modal-header h3{font-size:1.05rem;color:var(--navy);font-weight:700}
+        .modal-close{font-size:1.4rem;cursor:pointer;color:var(--slate-light);line-height:1;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;transition:all 0.15s}
+        .modal-close:hover{background:var(--gray-100);color:var(--navy)}
+        .upload-area{border:2px dashed var(--gray-300);border-radius:var(--radius);padding:20px;text-align:center;background:var(--gray-50);margin-bottom:12px;transition:all 0.2s;cursor:pointer}
+        .upload-area:hover,.upload-area.dragover{border-color:var(--blue);background:var(--blue-bg)}
+        .upload-area p{color:var(--slate);font-size:0.82rem}
+        .upload-area-sm{border:2px dashed var(--gray-300);border-radius:10px;padding:12px;text-align:center;background:var(--gray-50);margin-bottom:8px;transition:all 0.2s;cursor:pointer}
+        .upload-area-sm:hover,.upload-area-sm.dragover{border-color:var(--green);background:var(--green-bg)}
+        .upload-area-sm p{color:var(--slate);font-size:0.78rem}
+        .file-list{margin-bottom:8px}
+        .file-item{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--blue-pale);border-radius:20px;font-size:0.72rem;color:var(--blue);margin:2px;font-weight:500}
+        .file-item .file-del{cursor:pointer;color:var(--red);font-weight:700;margin-left:4px;font-size:0.8rem;line-height:1;opacity:0.5}
+        .file-item .file-del:hover{opacity:1}
+        .file-item-attend{background:var(--green-bg);color:var(--green)}
+        .modal-summary{font-size:0.78rem;color:var(--slate);margin-bottom:8px}
+        .modal-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:16px;border-top:1px solid var(--gray-200)}
+        .table-wrap{background:white;border-radius:var(--radius);box-shadow:var(--shadow);overflow-x:auto;margin-bottom:20px;border:1px solid var(--gray-200)}
+        table{width:100%;border-collapse:collapse}
+        th{background:var(--gray-50);padding:10px 14px;text-align:left;font-weight:600;font-size:0.78rem;color:var(--slate);border-bottom:1px solid var(--gray-200);text-transform:uppercase;letter-spacing:0.3px}
+        td{padding:9px 14px;border-bottom:1px solid var(--gray-100);font-size:0.84rem;font-variant-numeric:tabular-nums}
+        tr:hover{background:var(--gray-50)}
+        td.num,th.num{text-align:right}
+        .highlight-row{background:var(--blue-bg) !important;font-weight:600}
+        .highlight-row td{color:var(--blue)}
+        .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;margin-bottom:24px}
+        .chart-box{background:white;border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);border:1px solid var(--gray-200)}
+        .chart-box h3{font-size:0.88rem;color:var(--navy);margin-bottom:12px;font-weight:600}
+        .section{background:white;border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);margin-bottom:24px;border:1px solid var(--gray-200)}
+        .section h3{font-size:1rem;margin-bottom:16px;color:var(--navy);font-weight:700;letter-spacing:-0.3px}
+        .section-sub{font-size:0.88rem;font-weight:600;color:var(--navy);margin:20px 0 12px 0;padding-bottom:8px;border-bottom:1px solid var(--gray-200)}
+        .schedule-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+        .schedule-form select,.schedule-form button{padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:0.82rem;font-family:var(--font)}
+        .schedule-form select{background:white}
+        .schedule-form button{background:var(--blue);color:white;border:none;cursor:pointer;padding:8px 20px;font-weight:600;transition:background 0.15s}
+        .schedule-form button:hover{background:#1d4ed8}
+        .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:0.7rem;font-weight:600;letter-spacing:0.2px}
+        .badge-blue{background:var(--blue-pale);color:var(--blue)}
+        .badge-orange{background:var(--green-bg);color:var(--green)}
+        .empty-state{text-align:center;padding:80px 20px;color:var(--slate-light)}
+        .empty-state p{margin-top:12px;font-size:0.9rem}
+        .btn{padding:8px 18px;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:var(--font);transition:all 0.15s}
+        .btn-danger{background:var(--red-bg);color:var(--red);border:1px solid #fecaca}
+        .btn-danger:hover{background:#fee2e2}
+        .btn-primary{background:var(--blue);color:white}
+        .btn-primary:hover{background:#1d4ed8}
+        .btn-download{background:var(--green);color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:0.8rem;font-weight:600;transition:background 0.15s}
+        .btn-download:hover{background:#047857}
+        .per-person-row td{background:var(--purple-bg) !important;font-size:0.82rem;color:var(--purple)}
+        .sub-row td{color:var(--slate-light);font-size:0.82rem}
+        .sub-row td:first-child{padding-left:28px}
+        .section-title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+        .section-title-row h3{margin-bottom:0}
+        .tier-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-bottom:12px}
+        .tier-input{display:flex;flex-direction:column;align-items:center;font-size:0.75rem;gap:4px}
+        .tier-input input{width:64px;padding:6px;border:1px solid var(--gray-300);border-radius:6px;text-align:center;font-size:0.82rem;font-family:var(--font)}
+        .tier-input input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+        .tier-input label{color:var(--slate);font-weight:500}
+        .collapsible-header{cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:12px 0}
+        .collapsible-header:hover{color:var(--blue)}
+        .collapsible-body{display:none;padding-top:12px}
+        .collapsible-body.open{display:block}
+        .group-config{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+        .group-card{background:var(--gray-50);border-radius:10px;padding:16px;min-width:200px;flex:1;border:1px solid var(--gray-200)}
+        .group-card h4{font-size:0.88rem;color:var(--navy);margin-bottom:10px;font-weight:700}
+        .group-card .tier-row{display:flex;justify-content:space-between;font-size:0.82rem;padding:3px 0}
+
+        /* ===== Share (Presentation) Tab — Executive Grade ===== */
+        #tab-share{background:linear-gradient(180deg,var(--gray-50) 0%,#eef2f7 100%)}
+        .share-page{max-width:1140px;margin:0 auto;font-family:var(--font)}
+        .share-banner{background:linear-gradient(135deg,var(--navy) 0%,#1e3a5f 40%,var(--blue) 100%);color:white;border-radius:16px;padding:28px 36px;margin-bottom:24px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 32px rgba(15,23,42,0.25)}
+        .share-banner::before{content:'';position:absolute;top:-50%;right:-20%;width:60%;height:200%;background:radial-gradient(circle,rgba(255,255,255,0.05) 0%,transparent 70%);pointer-events:none}
+        .share-banner .banner-logo{width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.15)}
+        .share-banner .banner-logo img{width:44px;height:auto;filter:brightness(0) invert(1);opacity:0.9}
+        .share-banner h2{font-size:1.4rem;font-weight:800;margin-bottom:6px;letter-spacing:-0.5px}
+        .share-banner .date-badge{display:inline-block;margin-top:8px;background:rgba(255,255,255,0.12);padding:5px 16px;border-radius:20px;font-size:0.75rem;font-weight:500;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1)}
+        .share-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+        .share-kpi{background:white;border-radius:var(--radius);padding:16px 20px;box-shadow:var(--shadow);border:1px solid var(--gray-200);border-left:4px solid var(--blue);transition:all 0.2s}
+        .share-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+        .share-kpi .kpi-label{font-size:0.68rem;color:var(--slate-light);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;font-weight:600}
+        .share-kpi .kpi-value{font-size:1.6rem;font-weight:800;color:var(--navy);line-height:1.1;letter-spacing:-0.5px}
+        .share-kpi .kpi-sub{font-size:0.68rem;color:var(--slate-light);margin-top:4px;font-weight:500}
+        .share-kpi.accent-red{border-left-color:var(--red)}
+        .share-kpi.accent-red .kpi-value{color:var(--red)}
+        .share-kpi.accent-green{border-left-color:var(--green)}
+        .share-kpi.accent-green .kpi-value{color:var(--green)}
+        .share-kpi.accent-purple{border-left-color:var(--purple)}
+        .share-kpi.accent-purple .kpi-value{color:var(--purple)}
+        .share-kpi.accent-teal{border-left-color:var(--teal)}
+        .share-kpi.accent-teal .kpi-value{color:var(--teal)}
+        .share-section{background:white;border-radius:16px;padding:28px 32px;box-shadow:var(--shadow);margin-bottom:20px;border:1px solid var(--gray-200)}
+        .share-section h3{font-size:1.05rem;color:var(--navy);margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid var(--gray-100);font-weight:700;letter-spacing:-0.3px}
+        .share-section h4{font-size:0.9rem;color:var(--slate);margin:20px 0 12px 0;font-weight:600}
+        .share-table{width:100%;border-collapse:separate;border-spacing:0;border-radius:10px;overflow:hidden;margin-bottom:18px;border:1px solid var(--gray-200)}
+        .share-table thead th{background:var(--gray-50);padding:12px 16px;font-size:0.72rem;font-weight:700;color:var(--slate);text-align:right;border-bottom:2px solid var(--gray-200);text-transform:uppercase;letter-spacing:0.5px}
+        .share-table thead th:first-child{text-align:left}
+        .share-table tbody td{padding:11px 16px;font-size:0.85rem;text-align:right;border-bottom:1px solid var(--gray-100);font-variant-numeric:tabular-nums}
+        .share-table tbody td:first-child{text-align:left;font-weight:600;color:var(--navy)}
+        .share-table tbody tr:last-child td{border-bottom:none}
+        .share-table tbody tr:hover{background:var(--gray-50)}
+        .share-table .row-total{background:var(--blue-bg);font-weight:700}
+        .share-table .row-total td{color:var(--blue)}
+        .share-table .row-highlight{background:var(--blue-bg)}
+        .share-table .row-sub td{color:var(--slate-light);font-size:0.8rem}
+        .share-table .row-sub td:first-child{padding-left:28px;font-weight:400}
+        .share-table .row-accent td{background:#fffbeb}
+        .share-table .row-per-person td{background:var(--purple-bg);font-size:0.82rem;color:var(--purple)}
+        .share-chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:12px}
+        .share-chart-box{background:var(--gray-50);border-radius:var(--radius);padding:20px;border:1px solid var(--gray-200);display:flex;flex-direction:column;justify-content:center}
+        .share-chart-box h4{font-size:0.85rem;color:var(--slate);margin-bottom:14px;font-weight:600;text-align:center}
+        .share-footer{text-align:center;padding:24px;color:var(--slate-light);font-size:0.72rem;font-weight:500}
+        .share-actions{display:flex;gap:10px;margin-bottom:24px;justify-content:flex-end}
+        .share-actions button{padding:10px 22px;border:none;border-radius:10px;cursor:pointer;font-size:0.82rem;font-weight:600;transition:all 0.15s;font-family:var(--font)}
+        .btn-print{background:var(--navy);color:white}
+        .btn-print:hover{background:var(--navy-light)}
+        .share-group-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:16px}
+        .share-group-card{background:var(--gray-50);border-radius:var(--radius);padding:20px;border:1px solid var(--gray-200)}
+        .share-group-card h4{font-size:0.95rem;color:var(--navy);margin-bottom:12px;font-weight:700}
+        .share-group-card .gcard-table{width:100%;font-size:0.82rem}
+        .share-group-card .gcard-table td{padding:4px 8px}
+        .share-group-card .gcard-table td:nth-child(n+2){text-align:right;font-variant-numeric:tabular-nums}
+        .share-group-card .gcard-total{font-weight:700;border-top:2px solid var(--gray-300);color:var(--navy)}
+        /* Login */
+        .login-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.6);backdrop-filter:blur(8px);z-index:3000;display:flex;justify-content:center;align-items:center}
+        .login-overlay.hidden{display:none}
+        .login-box{background:white;border-radius:20px;padding:44px;width:380px;box-shadow:var(--shadow-lg);text-align:center}
+        .login-box h2{font-size:1.25rem;color:var(--navy);margin-bottom:6px;font-weight:800;letter-spacing:-0.3px}
+        .login-box p{font-size:0.82rem;color:var(--slate-light);margin-bottom:28px}
+        .login-box input{width:100%;padding:12px 16px;border:1px solid var(--gray-300);border-radius:10px;font-size:0.9rem;margin-bottom:12px;outline:none;transition:all 0.2s;font-family:var(--font)}
+        .login-box input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+        .login-box button{width:100%;padding:13px;background:var(--navy);color:white;border:none;border-radius:10px;font-size:0.9rem;font-weight:700;cursor:pointer;transition:all 0.2s;font-family:var(--font)}
+        .login-box button:hover{background:var(--navy-light)}
+        .login-error{color:var(--red);font-size:0.8rem;margin-bottom:10px;min-height:1.2em}
+        .tab.tab-hidden{display:none}
+        .header .login-info{font-size:0.75rem;opacity:0.5;cursor:pointer;font-weight:500}
+        .header .login-info:hover{opacity:0.9;text-decoration:underline}
+
+        /* Timetable */
+        .timetable{width:100%;border-collapse:collapse;font-size:0.75rem}
+        .timetable th{background:var(--gray-50);padding:8px 6px;text-align:center;font-size:0.7rem;color:var(--slate);border:1px solid var(--gray-200);font-weight:700;text-transform:uppercase;letter-spacing:0.3px}
+        .timetable td{padding:5px 6px;border:1px solid var(--gray-200);text-align:center;vertical-align:middle;height:34px}
+        .timetable .hour-cell{background:var(--gray-50);font-weight:600;color:var(--slate);width:64px}
+        .timetable .tt-tb{display:inline-block;background:var(--blue-pale);color:var(--blue);padding:2px 8px;border-radius:6px;font-size:0.68rem;font-weight:700;margin:1px}
+        .timetable .tt-sp{display:inline-block;background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:6px;font-size:0.68rem;font-weight:700;margin:1px}
+        .timetable .tt-both{background:#fffbeb}
+        .timetable .tt-cutoff td{border-top:2px dashed var(--red)}
+        .timetable .tt-empty{color:var(--gray-300)}
+
+        /* Custom tooltip */
+        .has-tip{position:relative;cursor:help;text-decoration:underline dotted var(--slate-light)}
+        .has-tip .tip-box{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--navy);color:white;padding:10px 14px;border-radius:10px;font-size:0.72rem;white-space:nowrap;z-index:100;line-height:1.7;box-shadow:var(--shadow-lg)}
+        .has-tip .tip-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--navy)}
+        .has-tip:hover .tip-box{display:block}
+
+        /* Working day toggle */
+        .wd-toggle-row{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+        .wd-toggle-row .wd-label{font-size:0.8rem;color:var(--slate);margin-right:8px;font-weight:600}
+        .wd-day{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px}
+        .wd-day span{font-size:0.7rem;color:var(--slate-light);font-weight:500}
+        .toggle-switch{position:relative;width:38px;height:22px;cursor:pointer}
+        .toggle-switch input{opacity:0;width:0;height:0}
+        .toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:var(--gray-300);border-radius:11px;transition:0.2s}
+        .toggle-slider::before{content:'';position:absolute;width:18px;height:18px;left:2px;bottom:2px;background:white;border-radius:50%;transition:0.2s;box-shadow:var(--shadow-sm)}
+        .toggle-switch input:checked+.toggle-slider{background:var(--blue)}
+        .toggle-switch input:checked+.toggle-slider::before{transform:translateX(16px)}
+        .wd-off{opacity:0.35}
+
+        /* Loading bar */
+        .loading-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(248,250,252,0.92);backdrop-filter:blur(4px);z-index:2000;justify-content:center;align-items:center;flex-direction:column}
+        .loading-overlay.active{display:flex}
+        .loading-box{background:white;border-radius:20px;padding:40px 52px;box-shadow:var(--shadow-lg);text-align:center;min-width:340px;border:1px solid var(--gray-200)}
+        .loading-box h3{font-size:1.05rem;color:var(--navy);margin-bottom:18px;font-weight:700}
+        .loading-bar-track{width:100%;height:6px;background:var(--gray-200);border-radius:3px;overflow:hidden;margin-bottom:14px}
+        .loading-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));border-radius:3px;transition:width 0.3s ease;width:0%}
+        .loading-status{font-size:0.82rem;color:var(--slate-light);font-weight:500}
+        .loading-spinner{width:28px;height:28px;border:3px solid var(--gray-200);border-top:3px solid var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+
+        /* Sub-tabs for share tab */
+        .share-subtabs{display:flex;gap:0;margin-bottom:24px;background:white;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--gray-200)}
+        .share-subtab{flex:1;padding:14px 24px;text-align:center;cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--slate-light);border-bottom:2px solid transparent;transition:all 0.2s;background:white}
+        .share-subtab:hover{color:var(--navy);background:var(--gray-50)}
+        .share-subtab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg)}
+        .share-subtab-content{display:none}
+        .share-subtab-content.active{display:block}
+        /* Quick buttons */
+        .quick-nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+        .quick-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:white;border:1px solid var(--gray-200);border-radius:24px;font-size:0.78rem;font-weight:600;color:var(--navy);cursor:pointer;transition:all 0.2s;box-shadow:var(--shadow-sm)}
+        .quick-btn:hover{background:var(--blue-bg);border-color:var(--blue);color:var(--blue);transform:translateY(-1px);box-shadow:var(--shadow)}
+        .quick-btn::before{content:'\2192';font-weight:700;color:var(--blue-light);font-size:0.85rem}
+        /* Actual inflow upload */
+        .upload-area-actual{border:2px dashed #c4b5fd;border-radius:10px;padding:12px;text-align:center;background:var(--purple-bg);margin-bottom:8px;transition:all 0.2s;cursor:pointer}
+        .upload-area-actual:hover,.upload-area-actual.dragover{border-color:var(--purple);background:#ede9fe}
+        .upload-area-actual p{color:var(--slate);font-size:0.78rem}
+        .file-item-actual{background:var(--purple-bg);color:var(--purple)}
+        /* Age table — reuses share-table styles */
+        .age-table{width:100%;border-collapse:separate;border-spacing:0;border-radius:10px;overflow:hidden;margin-bottom:18px;border:1px solid var(--gray-200)}
+        .age-table thead th{background:var(--gray-50);padding:11px 14px;font-size:0.72rem;font-weight:700;color:var(--slate);text-align:right;border-bottom:2px solid var(--gray-200);text-transform:uppercase;letter-spacing:0.5px}
+        .age-table thead th:first-child{text-align:left}
+        .age-table tbody td{padding:9px 14px;font-size:0.84rem;text-align:right;border-bottom:1px solid var(--gray-100);font-variant-numeric:tabular-nums}
+        .age-table tbody td:first-child{text-align:left;font-weight:600;color:var(--navy)}
+        .age-table tbody tr:last-child td{border-bottom:none}
+        .age-table tbody tr:hover{background:var(--gray-50)}
+        .age-table .row-total{background:var(--blue-bg);font-weight:700}
+
+        /* 계열별 테이블 너비 통일 */
+        .tier-table-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px}
+        .tier-table-grid .table-wrap,.tier-table-grid .share-table{margin-bottom:0}
+        @media(max-width:900px){.tier-table-grid{grid-template-columns:1fr}}
+
+        @media print{
+            body{background:white !important;font-size:12px}
+            .header,.tabs,.modal-overlay,.share-actions,.btn-upload,.quick-nav,.share-subtabs{display:none !important}
+            .content{padding:0 !important}
+            .tab-content{display:none !important}
+            #tab-share{display:block !important;background:white !important}
+            .share-subtab-content{display:none !important}
+            .share-subtab-content.active{display:block !important}
+            .share-section,.share-kpi,.share-banner{break-inside:avoid;box-shadow:none !important;border:1px solid #ddd}
+            .share-banner{background:var(--navy) !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+            .share-kpi{border-left-width:4px}
+            .share-table,.age-table{border:1px solid #ddd}
+        }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1><img src="logo.png" alt="WM">WM DB 유입 예상 대시보드</h1>
+    <div class="header-right">
+        <span class="data-info" id="headerInfo"></span>
+        <button class="btn-upload" onclick="openModal()" id="btnUpload" style="display:none">데이터 업로드</button>
+        <span class="login-info" id="loginInfoBtn" onclick="showLoginModal()" style="display:none"></span>
+    </div>
+</div>
+<div class="tabs" id="mainTabs">
+    <div class="tab active" data-tab="analysis">유입 분석</div>
+    <div class="tab" data-tab="prediction">차주 예상</div>
+    <div class="tab" data-tab="share">DB 예상</div>
+</div>
+<div class="content">
+    <div class="tab-content active" id="tab-analysis">
+        <div id="analysisContent" style="display:none;">
+            <div style="display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-bottom:14px;">
+                <div class="chart-box" style="padding:14px;"><h3>일별 유입 추이</h3><canvas id="dailyTrendChart" style="max-height:220px;"></canvas></div>
+                <div class="chart-box" style="padding:14px;"><h3>요일별 평균 유입</h3><canvas id="dowChart" style="max-height:220px;"></canvas></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div class="chart-box" style="padding:14px;"><h3>DB 종류별 비중</h3><canvas id="dbTypeChart" style="max-height:200px;"></canvas></div>
+                <div class="chart-box" style="padding:14px;"><h3>매체 유형별 비중</h3><canvas id="mediaGroupChart" style="max-height:200px;"></canvas></div>
+            </div>
+            <div id="analysisTables"></div>
+            <div class="section">
+                <h3>타임보드 / 스페셜 시간대별 분석</h3>
+                <div class="chart-grid">
+                    <div class="chart-box" style="box-shadow:none;padding:0;"><h3>타임보드 시간대별 평균</h3><canvas id="tbTimeChart"></canvas></div>
+                    <div class="chart-box" style="box-shadow:none;padding:0;"><h3>스페셜 시간대별 평균</h3><canvas id="spTimeChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="empty-state" id="analysisEmpty">
+            <div style="font-size:3rem;">&#128200;</div>
+            <p>우측 상단의 [데이터 업로드] 버튼으로 DB 파일을 올려주세요</p>
+        </div>
+    </div>
+    <div class="tab-content" id="tab-prediction">
+        <div id="predictionContent" style="display:none;">
+            <p style="color:#666;font-size:0.85rem;margin-bottom:12px;" id="predWeekLabel"></p>
+            <div class="wd-toggle-row" id="workingDayToggles"></div>
+            <div id="predictionTables"></div>
+
+            <div class="section">
+                <h3>타임보드 / 스페셜 차주 스케줄</h3>
+                <p style="color:#666;font-size:0.85rem;margin-bottom:12px;">5PM 이후 타임보드/스페셜은 자동으로 다음날 분배에 포함</p>
+                <div class="schedule-form">
+                    <select id="schedType"><option value="timeboard">타임보드</option><option value="special">스페셜</option></select>
+                    <select id="schedDay">
+                        <option value="6">토</option><option value="0">일</option><option value="1">월</option>
+                        <option value="2">화</option><option value="3">수</option><option value="4">목</option><option value="5">금</option>
+                    </select>
+                    <select id="schedHour"></select>
+                </div>
+                <div style="margin-bottom:14px;padding:12px;background:#f5f5f5;border-radius:8px;">
+                    <p style="font-size:0.82rem;color:#666;margin-bottom:8px;">DB 종류별 비중 (%) — 합계 100%</p>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                        <label style="font-size:0.82rem;">영어 <input type="number" id="pct_영어" value="100" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
+                        <label style="font-size:0.82rem;">일본어 <input type="number" id="pct_일본어" value="0" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
+                        <label style="font-size:0.82rem;">중국어 <input type="number" id="pct_중국어" value="0" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
+                        <label style="font-size:0.82rem;">스페인어 <input type="number" id="pct_스페인어" value="0" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
+                        <label style="font-size:0.82rem;">프랑스어 <input type="number" id="pct_프랑스어" value="0" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
+                        <label style="font-size:0.82rem;">톡이즈 <input type="number" id="pct_톡이즈" value="0" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
+                        <span id="pctTotal" style="font-weight:600;font-size:0.85rem;color:#2e7d32;">합계: 100%</span>
+                        <button onclick="addSchedule()" style="padding:7px 18px;background:#1a237e;color:white;border:none;border-radius:6px;font-size:0.85rem;cursor:pointer;">추가</button>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="specialPredTable">
+                        <thead><tr><th>유형</th><th>요일</th><th>시간</th><th>비중</th><th class="num">예상 DB수</th><th>분배일</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="section" id="tierSection">
+                <div class="collapsible-header" onclick="toggleCollapsible('tierBody')">
+                    <h3 style="margin-bottom:0">계열별 분배 설정</h3>
+                    <span style="font-size:0.8rem;color:#999;">&#9660; 클릭하여 펼치기</span>
+                </div>
+                <div class="collapsible-body" id="tierBody">
+                    <p class="section-sub">계열별 비중 (%)</p>
+                    <div class="tier-grid" id="tierWeightInputs"></div>
+                    <p class="section-sub">그룹별 계열 기준 (1인당)</p>
+                    <div class="group-config" id="groupConfigDisplay"></div>
+                    <p class="section-sub">제2외국어 분배 기준 (1인당)</p>
+                    <div style="display:flex;gap:16px;margin-bottom:10px;">
+                        <label style="font-size:0.82rem;">상위 <input type="number" id="secBasisUpper" value="20" min="0" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="saveTierConfig()"></label>
+                        <label style="font-size:0.82rem;">하위 <input type="number" id="secBasisLower" value="25" min="0" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="saveTierConfig()"></label>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveTierConfig();updatePrediction();" style="font-size:0.82rem;padding:6px 14px;">설정 적용</button>
+                </div>
+            </div>
+
+            <div class="section" id="tierPredSection" style="display:none;">
+                <h3>계열별 예상 유입 수량</h3>
+                <div id="tierPredTables"></div>
+            </div>
+
+            <div class="section" id="groupDistSection" style="display:none;">
+                <h3>그룹별 / 계열별 1인 분배 예상</h3>
+                <div id="groupDistTables"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title-row">
+                    <h3>차주 종합 예상</h3>
+                    <button class="btn-download" onclick="downloadPredExcel()">엑셀 통합 다운로드</button>
+                </div>
+                <div class="table-wrap">
+                    <table id="totalPredTable">
+                        <thead id="totalPredHead"></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="chart-box" style="margin-top:16px;"><h3>차주 예상 유입 추이</h3><canvas id="predChart"></canvas></div>
+            </div>
+        </div>
+        <div class="empty-state" id="predictionEmpty">
+            <div style="font-size:3rem;">&#128302;</div>
+            <p>데이터를 업로드하면 차주 예상이 표시됩니다</p>
+        </div>
+    </div>
+
+    <!-- Tab 3: DB 예상 공유 -->
+    <div class="tab-content" id="tab-share">
+        <div id="shareContent" style="display:none;">
+            <div class="share-page">
+                <div class="share-actions">
+                    <button class="btn-download" onclick="downloadPredExcel()">엑셀 다운로드</button>
+                    <button class="btn-print" onclick="window.print()">인쇄 / PDF</button>
+                </div>
+                <div class="share-subtabs">
+                    <div class="share-subtab active" data-sharetab="total">종합</div>
+                    <div class="share-subtab" data-sharetab="brain">영어 + 제2외국어</div>
+                    <div class="share-subtab" data-sharetab="talkiz">톡이즈</div>
+                </div>
+                <div class="share-subtab-content active" id="sharetab-total"><div id="shareBody"></div></div>
+                <div class="share-subtab-content" id="sharetab-brain"><div id="shareBodyBrain"></div></div>
+                <div class="share-subtab-content" id="sharetab-talkiz"><div id="shareBodyTalkiz"></div></div>
+            </div>
+        </div>
+        <div class="empty-state" id="shareEmpty">
+            <div style="font-size:3rem;">&#128203;</div>
+            <p>차주 예상 데이터가 있어야 공유 페이지를 생성할 수 있습니다</p>
+        </div>
+    </div>
+</div>
+
+<!-- Login Overlay -->
+<div class="login-overlay hidden" id="loginOverlay">
+    <div class="login-box">
+        <h2>DB 유입 예상</h2>
+        <p>관리자 로그인이 필요합니다</p>
+        <div class="login-error" id="loginError"></div>
+        <input type="text" id="loginId" placeholder="아이디" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+        <input type="password" id="loginPw" placeholder="비밀번호" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+        <button onclick="doLogin()">로그인</button>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-box">
+        <div class="loading-spinner"></div>
+        <h3 id="loadingTitle">데이터 처리 중...</h3>
+        <div class="loading-bar-track"><div class="loading-bar-fill" id="loadingBar"></div></div>
+        <div class="loading-status" id="loadingStatus">준비 중...</div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="uploadModal">
+    <div class="modal">
+        <div class="modal-header"><h3>데이터 업로드</h3><span class="modal-close" onclick="closeModal()">&times;</span></div>
+        <p style="font-size:0.82rem;color:#1a237e;font-weight:600;margin-bottom:4px;">DB수 <span style="background:#e8eaf6;padding:1px 6px;border-radius:10px;font-size:0.7rem;">누적</span></p>
+        <div class="upload-area" id="uploadArea" style="padding:14px;">
+            <p style="margin:0;"><strong>DB 엑셀 파일 드래그 또는 클릭</strong> <span style="color:#999;font-size:0.78rem;">.xlsx .xls 여러 파일 가능</span></p>
+            <input type="file" id="fileInput" multiple accept=".xlsx,.xls" style="display:none">
+        </div>
+        <div class="file-list" id="fileList"></div>
+        <div class="modal-summary" id="modalSummary" style="margin-bottom:8px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div>
+                <p style="font-size:0.75rem;color:#2e7d32;font-weight:600;margin-bottom:3px;">근태 <span style="background:#e8f5e9;padding:1px 5px;border-radius:8px;font-size:0.65rem;">덮어쓰기</span></p>
+                <div class="upload-area-sm" id="attendUploadArea" style="padding:10px;margin-bottom:4px;">
+                    <p style="margin:0;font-size:0.78rem;"><strong>근태보고 업로드</strong></p>
+                    <input type="file" id="attendFileInput" accept=".xlsx,.xls" style="display:none">
+                </div>
+                <div class="file-list" id="attendFileList"></div>
+                <div class="modal-summary" id="attendSummary" style="font-size:0.75rem;"></div>
+            </div>
+            <div>
+                <p style="font-size:0.75rem;color:#00838f;font-weight:600;margin-bottom:3px;">TB/SP 참고 <span style="background:#e0f7fa;padding:1px 5px;border-radius:8px;font-size:0.65rem;">덮어쓰기</span></p>
+                <div class="upload-area-sm" id="tbspUploadArea" style="padding:10px;margin-bottom:4px;border-color:#00838f;">
+                    <p style="margin:0;font-size:0.78rem;"><strong>타임보드/스페셜 업로드</strong></p>
+                    <input type="file" id="tbspFileInput" accept=".xlsx,.xls" style="display:none">
+                </div>
+                <div class="file-list" id="tbspFileList"></div>
+                <div class="modal-summary" id="tbspSummary" style="font-size:0.75rem;"></div>
+            </div>
+            <div>
+                <p style="font-size:0.75rem;color:#7b1fa2;font-weight:600;margin-bottom:3px;">실제 유입 <span style="background:#f3e5f5;padding:1px 5px;border-radius:8px;font-size:0.65rem;">덮어쓰기</span></p>
+                <div class="upload-area-actual" id="actualUploadArea" style="padding:10px;margin-bottom:4px;">
+                    <p style="margin:0;font-size:0.78rem;"><strong>실제 유입 업로드</strong></p>
+                    <input type="file" id="actualFileInput" accept=".xlsx,.xls" style="display:none">
+                </div>
+                <div class="file-list" id="actualFileList"></div>
+                <div class="modal-summary" id="actualSummary" style="font-size:0.75rem;"></div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-danger" onclick="clearAllData()">전체 초기화</button>
+            <button class="btn btn-primary" onclick="closeModal()">닫기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ======================== Auth ========================
+var AUTH_ACCOUNTS=[
+    {id:'info_bin',pw:'wjdqhqls92!'},
+    {id:'admin',pw:'weavers0258!'}
+];
+var isLoggedIn=false,currentUser='';
+
+function doLogin(){
+    var id=document.getElementById('loginId').value.trim();
+    var pw=document.getElementById('loginPw').value;
+    var match=AUTH_ACCOUNTS.find(function(a){return a.id===id&&a.pw===pw;});
+    if(match){
+        isLoggedIn=true;currentUser=id;
+        sessionStorage.setItem('db_login',id);
+        document.getElementById('loginOverlay').classList.add('hidden');
+        applyAuthUI();
+    }else{
+        document.getElementById('loginError').textContent='아이디 또는 비밀번호가 올바르지 않습니다';
+    }
+}
+function doLogout(){
+    if(!confirm('로그아웃 하시겠습니까?'))return;
+    isLoggedIn=false;currentUser='';
+    sessionStorage.removeItem('db_login');
+    applyAuthUI();
+}
+function showLoginModal(){
+    if(isLoggedIn){doLogout();return;}
+    document.getElementById('loginOverlay').classList.remove('hidden');
+    document.getElementById('loginId').value='';
+    document.getElementById('loginPw').value='';
+    document.getElementById('loginError').textContent='';
+    document.getElementById('loginId').focus();
+}
+function checkSession(){
+    var saved=sessionStorage.getItem('db_login');
+    if(saved){
+        var match=AUTH_ACCOUNTS.find(function(a){return a.id===saved;});
+        if(match){isLoggedIn=true;currentUser=saved;document.getElementById('loginOverlay').classList.add('hidden');}
+    }
+}
+function applyAuthUI(){
+    var tabs=document.querySelectorAll('.tab');
+    tabs.forEach(function(t){
+        var tabName=t.dataset.tab;
+        if(tabName==='analysis'||tabName==='prediction'){
+            t.classList.toggle('tab-hidden',!isLoggedIn);
+        }
+    });
+    // 업로드 버튼
+    document.getElementById('btnUpload').style.display=isLoggedIn?'':'none';
+    // 로그인 정보
+    var infoBtn=document.getElementById('loginInfoBtn');
+    infoBtn.style.display='';
+    infoBtn.textContent=isLoggedIn?(currentUser+' | 로그아웃'):'로그인';
+    // 로그인 안 했으면 share 탭 활성화
+    if(!isLoggedIn){
+        document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+        document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});
+        document.querySelector('.tab[data-tab="share"]').classList.add('active');
+        document.getElementById('tab-share').classList.add('active');
+    }
+}
+
+// ======================== State ========================
+var allData=[],uploadedFiles=[],schedules=[],charts={};
+var attendanceData=[],attendanceFiles=[],attendanceMonth='';
+// 분배 여부 토글: [토,일,월,화,수,목,금] — true=분배일, false=비분배일(이월)
+var workingDayToggle=[true,false,true,true,true,true,true];
+// 타임보드/스페셜 참고 데이터 (A열 유입일, B열 매체코드)
+var tbspData=[],tbspFiles=[];
+// 실제 유입 데이터
+var actualInflowData=[],actualInflowFiles=[];
+
+var DAY_NAMES=['일','월','화','수','목','금','토'];
+var WEEK_ORDER=[6,0,1,2,3,4,5];
+var WEEK_LABELS=['토','일','월','화','수','목','금'];
+var DB_TYPES=['영어','일본어','중국어','스페인어','프랑스어','톡이즈'];
+var SEC_LANG_TYPES=['일본어','중국어','스페인어','프랑스어'];
+var MEDIA_TYPES=['GFA','카카오','메타','GDN','당근','일반'];
+var DIST_CUTOFF_HOUR=17;
+var TIERS=['0계열','1계열','2계열','3계열','4계열','5계열'];
+var SEC_TIERS=['상위','하위'];
+
+var COLORS={'영어':'#2563eb','일본어':'#0d9488','중국어':'#0891b2','스페인어':'#06b6d4','프랑스어':'#67e8f9','톡이즈':'#8b5cf6','제2외국어':'#0d9488','타임보드':'#f59e0b','스페셜':'#f97316'};
+var MEDIA_COLORS={'GFA':'#10b981','카카오':'#f59e0b','메타':'#6366f1','GDN':'#ef4444','당근':'#14b8a6','일반':'#94a3b8'};
+
+// Tier configuration
+var tierConfig = {
+    weights:[1.78,5.67,13.69,28.18,14.69,35.98],
+    groups:{
+        'W':{tiers:[0,1,2,3],basis:[4,7,13,18]},
+        'E':{tiers:[1,2,3,4],basis:[4,11,22,3]},
+        'N':{tiers:[3,4,5],basis:[4,12,34]}
+    },
+    secUpper:20, secLower:25
+};
+
+// ======================== Storage ========================
+// ======================== IndexedDB Storage ========================
+var DB_NAME='db_forecast_idb',DB_VER=1,idb=null;
+
+function openIDB(){
+    return new Promise(function(resolve,reject){
+        var req=indexedDB.open(DB_NAME,DB_VER);
+        req.onupgradeneeded=function(e){
+            var db=e.target.result;
+            if(!db.objectStoreNames.contains('store'))db.createObjectStore('store');
+        };
+        req.onsuccess=function(e){idb=e.target.result;resolve(idb);};
+        req.onerror=function(){reject(req.error);};
+    });
+}
+function idbPut(key,val){
+    return new Promise(function(resolve,reject){
+        if(!idb){resolve();return;}
+        var tx=idb.transaction('store','readwrite');
+        tx.objectStore('store').put(val,key);
+        tx.oncomplete=resolve;
+        tx.onerror=function(){reject(tx.error);};
+    });
+}
+function idbGet(key){
+    return new Promise(function(resolve,reject){
+        if(!idb){resolve(null);return;}
+        var tx=idb.transaction('store','readonly');
+        var req=tx.objectStore('store').get(key);
+        req.onsuccess=function(){resolve(req.result);};
+        req.onerror=function(){reject(req.error);};
+    });
+}
+function idbDelete(key){
+    return new Promise(function(resolve,reject){
+        if(!idb){resolve();return;}
+        var tx=idb.transaction('store','readwrite');
+        tx.objectStore('store').delete(key);
+        tx.oncomplete=resolve;
+        tx.onerror=function(){reject(tx.error);};
+    });
+}
+function idbClear(){
+    return new Promise(function(resolve,reject){
+        if(!idb){resolve();return;}
+        var tx=idb.transaction('store','readwrite');
+        tx.objectStore('store').clear();
+        tx.oncomplete=resolve;
+        tx.onerror=function(){reject(tx.error);};
+    });
+}
+
+function slimRecord(d){return{ds:d.dateStr,dw:d.dayOfWeek,mc:d.mediaCode,m:d.media,dt:d.dbType,tb:d.isTimeboard,sp:d.isSpecial,bh:d.broadcastHour,ck:d.customerKey,bd:d.batchDate,bp:d.batchPeriod,bw:d.batchDayOfWeek,fn:d.fileName||'',ag:d.age!==undefined&&d.age!==null?String(d.age):''};}
+function expandRecord(d){return{inflowDate:new Date(d.ds+'T00:00:00'),dateStr:d.ds,dayOfWeek:d.dw,mediaCode:d.mc,media:d.m,dbType:d.dt,dbGroup:classifyDBGroup(d.dt),isTimeboard:d.tb,isSpecial:d.sp,broadcastHour:d.bh,customerKey:d.ck,batchDate:d.bd||d.ds,batchPeriod:d.bp||'오전',batchDayOfWeek:d.bw!==undefined?d.bw:d.dw,fileName:d.fn||'',age:d.ag!==undefined&&d.ag!==null?String(d.ag):''};}
+
+async function saveToStorage(){
+    try{
+        await idbPut('dbData',allData.map(slimRecord));
+        await idbPut('dbFiles',uploadedFiles);
+    }catch(e){console.error('저장 오류:',e);}
+}
+async function saveAttendance(){
+    try{
+        await idbPut('attendData',attendanceData);
+        await idbPut('attendFiles',attendanceFiles);
+        await idbPut('attendMonth',attendanceMonth);
+    }catch(e){}
+}
+function saveTierConfig(){
+    tierConfig.weights=TIERS.map(function(_,i){return parseFloat(document.getElementById('tw_'+i).value)||0;});
+    tierConfig.secUpper=parseInt(document.getElementById('secBasisUpper').value)||0;
+    tierConfig.secLower=parseInt(document.getElementById('secBasisLower').value)||0;
+    Object.keys(tierConfig.groups).forEach(function(g){
+        tierConfig.groups[g].basis=tierConfig.groups[g].tiers.map(function(t){
+            var el=document.getElementById('gb_'+g+'_'+t);
+            return el?parseInt(el.value)||0:0;
+        });
+    });
+    idbPut('tierConfig',tierConfig);
+}
+async function loadFromStorage(){
+    try{
+        var r=await idbGet('dbData'),f=await idbGet('dbFiles');
+        if(r&&r.length)allData=r.map(expandRecord);
+        if(f)uploadedFiles=f;
+    }catch(e){allData=[];uploadedFiles=[];}
+    try{
+        var a=await idbGet('attendData'),af=await idbGet('attendFiles'),am=await idbGet('attendMonth');
+        if(a)attendanceData=a;if(af)attendanceFiles=af;if(am)attendanceMonth=am;
+    }catch(e){}
+    try{var t=await idbGet('tierConfig');if(t)tierConfig=t;}catch(e){}
+    try{var w=await idbGet('workingDays');if(w)workingDayToggle=w;}catch(e){}
+    try{var sc=await idbGet('schedules');if(sc)schedules=sc;}catch(e){}
+    try{var tb2=await idbGet('tbspData');if(tb2)tbspData=tb2;var tf=await idbGet('tbspFiles');if(tf)tbspFiles=tf;}catch(e){}
+    try{var ai=await idbGet('actualInflowData');if(ai)actualInflowData=ai;var aif=await idbGet('actualInflowFiles');if(aif)actualInflowFiles=aif;}catch(e){}
+    // Migrate from localStorage if IndexedDB is empty but localStorage has data
+    if(!allData.length){
+        try{
+            var ls=localStorage.getItem('db_forecast_data');
+            if(ls){
+                allData=JSON.parse(ls).map(expandRecord);
+                uploadedFiles=JSON.parse(localStorage.getItem('db_forecast_files')||'[]');
+                await saveToStorage();
+                localStorage.removeItem('db_forecast_data');
+                localStorage.removeItem('db_forecast_files');
+                console.log('localStorage → IndexedDB 마이그레이션 완료 ('+allData.length+'건)');
+            }
+        }catch(e){}
+    }
+}
+// 차주 날짜 라벨 (m/d(요일) 형식)
+function getPredDateLabels(){
+    var nw=getNextWeekRange(),labels=[];
+    for(var i=0;i<7;i++){var d=new Date(nw.start);d.setDate(d.getDate()+i);labels.push((d.getMonth()+1)+'/'+d.getDate()+'('+DAY_NAMES[d.getDay()]+')');}
+    return labels;
+}
+function saveWorkingDays(){idbPut('workingDays',workingDayToggle);}
+function toggleWorkingDay(idx){
+    workingDayToggle[idx]=!workingDayToggle[idx];
+    saveWorkingDays();
+    updatePrediction();
+}
+
+// ======================== Classification ========================
+function classifyDBType(mc){if(!mc)return'영어';var c=mc.toLowerCase();if(c.includes('talkis'))return'톡이즈';if(c.includes('jhp')||c.includes('japer'))return'일본어';if(c.includes('chp')||c.includes('chn')||c.includes('cnper'))return'중국어';if(c.includes('shp')||c.includes('esper'))return'스페인어';if(c.includes('fhp')||c.includes('frper'))return'프랑스어';return'영어';}
+function classifyDBGroup(dt){if(dt==='톡이즈')return'톡이즈';if(SEC_LANG_TYPES.indexOf(dt)>=0)return'제2외국어';return'영어';}
+function classifyMedia(mc){if(!mc)return'일반';var c=mc.toLowerCase();if(c.includes('naver_tb'))return'타임보드';if(c.includes('naver_sp'))return'스페셜';if(c.includes('gfa'))return'GFA';if(c.includes('kakao'))return'카카오';if(c.includes('facebook')||c.includes('insta')||c.includes('meta'))return'메타';if(c.includes('gdn'))return'GDN';if(c.includes('daan'))return'당근';return'일반';}
+function isTimeboard(mc){return mc&&mc.toLowerCase().includes('naver_tb');}
+function isSpecialMedia(mc){return mc&&mc.toLowerCase().includes('naver_sp');}
+function shouldExclude(row){var ob=row[7]?String(row[7]):'',di=row[15]?String(row[15]):'',mc=row[19]?String(row[19]).trim():'';if(!mc||ob.includes('관리자')||di.includes('IN')||di.includes('재콜'))return true;var cl=mc.toLowerCase();return cl.includes('callback')||cl.includes('tv_b')||cl.includes('_h_');}
+function parseMediaTime(mc){if(!mc)return null;var m=mc.match(/(\d{1,2})(AM|PM)$/i);if(!m)return null;var h=parseInt(m[1]),p=m[2].toUpperCase();if(p==='PM'&&h!==12)h+=12;if(p==='AM'&&h===12)h=0;return h;}
+function formatHour(h){if(h===null||h===undefined)return'미상';var p=h<12?'AM':'PM';var d=h===0?12:h>12?h-12:h;return d+p;}
+
+// Attendance
+function classifyStaffDB(p){var d=(p.department||'').trim();if(d.includes('제2외국어'))return'제2외국어';if(d.includes('톡이즈'))return'톡이즈';if(d.includes('뇌새김')){var g=(p.group||'').trim();if(g.includes('톡이즈'))return'톡이즈';if(g.includes('제2')||g.includes('2외')||g.includes('일본')||g.includes('중국'))return'제2외국어';return'영어';}return'영어';}
+function classifyStaffGroup(p){var g=(p.group||'').trim().toUpperCase();if(g.includes('W'))return'W';if(g.includes('E'))return'E';if(g.includes('N')||g.includes('A'))return'N';return null;}
+function isWorkingStatus(v){if(v===null||v===undefined)return false;var s=String(v).trim();if(s===''||s==='-')return false;if(/^(연|휴|공|병|경|무|파견|교육|출장)/.test(s))return false;return true;}
+// 근태 월이 다르면 해당 카테고리 전원 출근으로 가정
+function getWorkingStaffForDate(ds,cat){
+    if(!attendanceData.length)return null;
+    var ym=ds.slice(0,7),dom=new Date(ds+'T00:00:00').getDate();
+    if(attendanceMonth!==ym){
+        var cnt=0;attendanceData.forEach(function(p){if(classifyStaffDB(p)===cat)cnt++;});return cnt;
+    }
+    var cnt=0;attendanceData.forEach(function(p){if(classifyStaffDB(p)===cat&&isWorkingStatus(p.daily[dom]))cnt++;});return cnt;
+}
+function getWorkingStaffByGroupForDate(ds,grp){
+    if(!attendanceData.length)return null;
+    var ym=ds.slice(0,7),dom=new Date(ds+'T00:00:00').getDate();
+    if(attendanceMonth!==ym){
+        var cnt=0;attendanceData.forEach(function(p){if(classifyStaffGroup(p)===grp&&classifyStaffDB(p)==='영어')cnt++;});return cnt;
+    }
+    var cnt=0;attendanceData.forEach(function(p){if(classifyStaffGroup(p)===grp&&classifyStaffDB(p)==='영어'&&isWorkingStatus(p.daily[dom]))cnt++;});return cnt;
+}
+function getWorkingSecStaffForDate(ds){
+    if(!attendanceData.length)return null;
+    var ym=ds.slice(0,7),dom=new Date(ds+'T00:00:00').getDate();
+    if(attendanceMonth!==ym){
+        var cnt=0;attendanceData.forEach(function(p){if(classifyStaffDB(p)==='제2외국어')cnt++;});return cnt;
+    }
+    var cnt=0;attendanceData.forEach(function(p){if(classifyStaffDB(p)==='제2외국어'&&isWorkingStatus(p.daily[dom]))cnt++;});return cnt;
+}
+function getNextWeekDates(){var r=getNextWeekRange(),d=[];for(var i=0;i<7;i++){var x=new Date(r.start);x.setDate(x.getDate()+i);d.push(formatDate(x));}return d;}
+
+// ======================== Batch / Date ========================
+function getBatchInfo(dt){var h=dt.getHours(),m=dt.getMinutes(),t=h*60+m;if(t>=600&&t<855)return{batchDate:formatDate(dt),batchPeriod:'오후'};if(t>=855){var n=new Date(dt);n.setDate(n.getDate()+1);return{batchDate:formatDate(n),batchPeriod:'오전'};}return{batchDate:formatDate(dt),batchPeriod:'오전'};}
+function parseExcelDate(v){if(!v)return null;if(v instanceof Date&&!isNaN(v.getTime()))return v;if(typeof v==='number')return new Date((v-25569)*86400*1000);if(typeof v==='string'){var d=new Date(v);return isNaN(d.getTime())?null:d;}return null;}
+function formatDate(d){if(!d)return'';return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function getNextWeekRange(){
+    // 데이터의 마지막 유입일 기준, 그 다음날부터 바로 돌아오는 토~금
+    var lastDate=null;
+    if(allData.length){
+        allData.forEach(function(d){
+            if(d.dateStr){var dd=new Date(d.dateStr+'T00:00:00');if(!lastDate||dd>lastDate)lastDate=dd;}
+        });
+    }
+    if(!lastDate){lastDate=new Date();lastDate.setHours(0,0,0,0);}
+    // lastDate 다음날부터 가장 가까운 토요일 찾기
+    var after=new Date(lastDate);after.setDate(after.getDate()+1);
+    var dw=after.getDay();
+    var ds=(6-dw+7)%7; // 토요일까지 남은 일수 (이미 토요일이면 0)
+    var ns=new Date(after);ns.setDate(after.getDate()+ds);
+    var nf=new Date(ns);nf.setDate(ns.getDate()+6);
+    return{start:ns,end:nf};
+}
+
+// ======================== File Processing ========================
+function processFile(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(e){try{var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});var ws=wb.Sheets[wb.SheetNames[0]];var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});var recs=[];for(var i=1;i<rows.length;i++){var row=rows[i];if(!row||!row.length||shouldExclude(row))continue;var inf=parseExcelDate(row[9]),mc=row[19]?String(row[19]).trim():'',ck=row[6]?String(row[6]).trim():'';if(!inf||!ck)continue;var dt=classifyDBType(mc),tb=isTimeboard(mc),sp=isSpecialMedia(mc),ba=getBatchInfo(inf);var ageRaw=(row[11]!==undefined&&row[11]!==null&&row[11]!=='')?String(row[11]).trim():'';recs.push({inflowDate:inf,dateStr:formatDate(inf),dayOfWeek:inf.getDay(),mediaCode:mc,media:classifyMedia(mc),dbType:dt,dbGroup:classifyDBGroup(dt),isTimeboard:tb,isSpecial:sp,broadcastHour:(tb||sp)?parseMediaTime(mc):null,customerKey:ck,batchDate:ba.batchDate,batchPeriod:ba.batchPeriod,batchDayOfWeek:new Date(ba.batchDate+'T00:00:00').getDay(),age:ageRaw});}res({fileName:file.name,records:recs});}catch(err){rej(err);}};r.onerror=rej;r.readAsArrayBuffer(file);});}
+function showLoading(title){document.getElementById('loadingTitle').textContent=title||'데이터 처리 중...';document.getElementById('loadingBar').style.width='0%';document.getElementById('loadingStatus').textContent='준비 중...';document.getElementById('loadingOverlay').classList.add('active');}
+function updateLoading(pct,status){document.getElementById('loadingBar').style.width=pct+'%';document.getElementById('loadingStatus').textContent=status||'';}
+function hideLoading(){document.getElementById('loadingOverlay').classList.remove('active');}
+
+async function handleFiles(files){
+    var total=files.length;if(!total)return;
+    showLoading('DB 파일 처리 중...');
+    var dc=0;
+    // Allow UI to render
+    await new Promise(function(r){setTimeout(r,50);});
+    for(var i=0;i<total;i++){
+        var f=files[i];
+        var pct=Math.round((i/total)*100);
+        updateLoading(pct,f.name+' 처리 중... ('+(i+1)+'/'+total+')');
+        await new Promise(function(r){setTimeout(r,20);}); // yield to UI
+        var isReupload=uploadedFiles.indexOf(f.name)>=0;
+        try{
+            var r=await processFile(f);
+            // 기존 데이터 인덱스 맵 (키: customerKey|dateStr)
+            var ek={};allData.forEach(function(d,idx){ek[d.customerKey+'|'+d.dateStr]=idx;});
+            var nr=[],patched=0;
+            r.records.forEach(function(x){
+                var key=x.customerKey+'|'+x.dateStr;
+                if(ek[key]!==undefined){
+                    // 중복 레코드: 연령대 등 빈 필드 패치
+                    var existing=allData[ek[key]];
+                    if(!existing.age&&x.age){existing.age=x.age;patched++;}
+                }else{
+                    x.fileName=r.fileName;
+                    nr.push(x);
+                }
+            });
+            if(nr.length)allData=allData.concat(nr);
+            if(!isReupload)uploadedFiles.push(r.fileName);
+            if(isReupload&&patched>0)dc=-1; // 패치 성공 표시
+            else if(isReupload&&patched===0)dc++;
+        }catch(err){alert('파일 오류 ('+f.name+'): '+err.message);}
+    }
+    updateLoading(90,'저장 중...');
+    await new Promise(function(r){setTimeout(r,30);});
+    await saveToStorage();
+    updateLoading(95,'화면 업데이트 중...');
+    await new Promise(function(r){setTimeout(r,30);});
+    try{updateAll();}catch(e){console.error('updateAll error:',e);}
+    updateLoading(100,'완료!');
+    await new Promise(function(r){setTimeout(r,300);});
+    hideLoading();
+    if(dc===-1)alert('기존 데이터의 연령대 정보가 갱신되었습니다.');
+    else if(dc>0)alert(dc+'개 파일이 이미 업로드되어 건너뛰었습니다.');
+}
+function processAttendanceFile(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(e){try{var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});var ws=wb.Sheets[wb.SheetNames[0]];var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});var ppl=[];for(var i=1;i<rows.length;i++){var row=rows[i];if(!row||row.length<7)continue;var nm=row[4]?String(row[4]).trim():'';if(!nm)continue;var dl={};for(var d=6;d<row.length;d++)dl[d-5]=row[d];ppl.push({department:row[0]?String(row[0]).trim():'',group:row[1]?String(row[1]).trim():'',center:row[2]?String(row[2]).trim():'',team:row[3]?String(row[3]).trim():'',name:nm,joinDate:row[5]||'',daily:dl});}var m=file.name.match(/(\d{4})(\d{2})(\d{2})/);res({fileName:file.name,people:ppl,month:m?m[1]+'-'+m[2]:''});}catch(err){rej(err);}};r.onerror=rej;r.readAsArrayBuffer(file);});}
+async function handleAttendanceFile(file){
+    if(attendanceFiles.indexOf(file.name)>=0){alert('이미 업로드된 근태 파일입니다.');return;}
+    showLoading('근태 파일 처리 중...');
+    updateLoading(30,file.name+' 분석 중...');
+    await new Promise(function(r){setTimeout(r,50);});
+    try{
+        var r=await processAttendanceFile(file);
+        updateLoading(70,'저장 중...');
+        await new Promise(function(r2){setTimeout(r2,30);});
+        attendanceData=r.people;attendanceMonth=r.month;attendanceFiles=[r.fileName];
+        saveAttendance();
+        updateLoading(90,'화면 업데이트 중...');
+        await new Promise(function(r2){setTimeout(r2,30);});
+        updateAll();updateModalUI();
+        updateLoading(100,'완료! ('+r.people.length+'명)');
+        await new Promise(function(r2){setTimeout(r2,400);});
+    }catch(err){alert('근태 파일 오류: '+err.message);}
+    hideLoading();
+}
+
+// 타임보드/스페셜 참고 데이터 처리
+function processTbspFile(file){
+    return new Promise(function(res,rej){
+        var r=new FileReader();r.onload=function(e){
+            try{
+                var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+                var ws=wb.Sheets[wb.SheetNames[0]];
+                var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+                var recs=[];
+                for(var i=1;i<rows.length;i++){
+                    var row=rows[i];if(!row||row.length<2)continue;
+                    var dt=parseExcelDate(row[0]),mc=row[1]?String(row[1]).trim():'';
+                    if(!dt||!mc)continue;
+                    var tb=mc.toLowerCase().includes('naver_tb');
+                    var sp=mc.toLowerCase().includes('naver_sp');
+                    if(!tb&&!sp)continue;
+                    var hr=parseMediaTime(mc);
+                    recs.push({dateStr:formatDate(dt),hour:hr,type:tb?'timeboard':'special',mediaCode:mc,isWeekend:isWeekendOrHoliday(formatDate(dt))});
+                }
+                res({fileName:file.name,records:recs});
+            }catch(err){rej(err);}
+        };r.onerror=rej;r.readAsArrayBuffer(file);
+    });
+}
+async function handleTbspFile(file){
+    showLoading('타임보드/스페셜 데이터 처리 중...');
+    updateLoading(20,file.name+' 분석 중...');
+    await new Promise(function(r){setTimeout(r,50);});
+    try{
+        var r=await processTbspFile(file);
+        updateLoading(60,r.records.length+'건 처리 완료');
+        await new Promise(function(r2){setTimeout(r2,30);});
+        tbspData=r.records;tbspFiles=[r.fileName];
+        await idbPut('tbspData',tbspData);await idbPut('tbspFiles',tbspFiles);
+        updateLoading(90,'화면 업데이트 중...');
+        await new Promise(function(r2){setTimeout(r2,30);});
+        updateAll();updateModalUI();
+        updateLoading(100,'완료! ('+r.records.length+'건)');
+        await new Promise(function(r2){setTimeout(r2,400);});
+    }catch(err){alert('타임보드/스페셜 파일 오류: '+err.message);}
+    hideLoading();
+}
+async function clearAllData(){if(!confirm('모든 데이터를 초기화하시겠습니까?'))return;allData=[];uploadedFiles=[];schedules=[];attendanceData=[];attendanceFiles=[];attendanceMonth='';tbspData=[];tbspFiles=[];actualInflowData=[];actualInflowFiles=[];await idbClear();updateAll();updateModalUI();}
+
+// ======================== Actual Inflow Data ========================
+function processActualInflowFile(file){
+    return new Promise(function(res,rej){
+        var r=new FileReader();r.onload=function(e){
+            try{
+                var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+                var ws=wb.Sheets[wb.SheetNames[0]];
+                var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+                var recs=[];
+                for(var i=1;i<rows.length;i++){
+                    var row=rows[i];if(!row||row.length<15)continue;
+                    var inflowDate=parseExcelDate(row[2]); // C열 유입일
+                    var name=row[3]?String(row[3]).trim():''; // D열 이름
+                    var ageGroup=row[4]?String(row[4]).trim():''; // E열 연령대
+                    var code=row[14]?String(row[14]).trim():''; // O열 코드
+                    var brand=row[12]?String(row[12]).trim():''; // M열 브랜드
+                    var dbTypeCol=row[13]?String(row[13]).trim():''; // N열 DB타입
+                    var prodType=row[15]?String(row[15]).trim():''; // P열 제품(코드)타입
+                    var region=row[11]?String(row[11]).trim():''; // L열 지역
+                    var tier=row[9]?String(row[9]).trim():''; // J열 계열
+                    if(!inflowDate&&!name&&!code)continue;
+                    var dt=classifyDBType(code);
+                    var media=classifyMedia(code);
+                    var dbGroup=classifyDBGroup(dt);
+                    recs.push({
+                        inflowDate:inflowDate?formatDate(inflowDate):'',
+                        name:name,ageGroup:ageGroup,code:code,
+                        brand:brand,dbType:dt,dbTypeRaw:dbTypeCol,
+                        media:media,dbGroup:dbGroup,
+                        prodType:prodType,region:region,tier:tier
+                    });
+                }
+                res({fileName:file.name,records:recs});
+            }catch(err){rej(err);}
+        };r.onerror=rej;r.readAsArrayBuffer(file);
+    });
+}
+async function handleActualInflowFile(file){
+    showLoading('실제 유입 데이터 처리 중...');
+    updateLoading(20,file.name+' 분석 중...');
+    await new Promise(function(r){setTimeout(r,50);});
+    try{
+        var r=await processActualInflowFile(file);
+        updateLoading(60,r.records.length+'건 처리 완료');
+        await new Promise(function(r2){setTimeout(r2,30);});
+        actualInflowData=r.records;actualInflowFiles=[r.fileName];
+        await idbPut('actualInflowData',actualInflowData);
+        await idbPut('actualInflowFiles',actualInflowFiles);
+        updateLoading(90,'화면 업데이트 중...');
+        await new Promise(function(r2){setTimeout(r2,30);});
+        updateAll();updateModalUI();
+        updateLoading(100,'완료! ('+r.records.length+'건)');
+        await new Promise(function(r2){setTimeout(r2,400);});
+    }catch(err){alert('실제 유입 파일 오류: '+err.message);}
+    hideLoading();
+}
+
+// 연령대 분류
+function classifyAgeGroup(raw){
+    if(raw===null||raw===undefined||raw==='')return'미상';
+    var s=String(raw).trim();
+    if(s==='')return'미상';
+    var n=parseInt(s);
+    if(isNaN(n))return'미상';
+    if(n>=60)return'60대 이상';
+    if(n>=50)return'50대';
+    if(n>=40)return'40대';
+    if(n>=30)return'30대';
+    if(n>=20)return'20대';
+    if(n>=10)return'10대';
+    return'00대';
+}
+var AGE_GROUPS=['00대','10대','20대','30대','40대','50대','60대 이상','미상'];
+
+// 연령대별 일자별 유입량 분석 (최근 1주 토~금만)
+function getAgeDailyTable(){
+    // 최근 1주(토~금) 범위 계산
+    var allDates={};
+    allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial)allDates[d.dateStr]=true;});
+    var sorted=Object.keys(allDates).sort();
+    if(!sorted.length)return{dates:[],table:{}};
+    // 마지막 날짜에서 해당 주의 토요일 찾기
+    var last=new Date(sorted[sorted.length-1]+'T00:00:00');
+    var dow=last.getDay();
+    var satOffset=(dow>=6)?dow-6:(dow+1); // 현재 요일에서 토요일까지 거리
+    var sat=new Date(last);sat.setDate(last.getDate()-satOffset);
+    var fri=new Date(sat);fri.setDate(sat.getDate()+6);
+    var satStr=formatDate(sat),friStr=formatDate(fri);
+    // 해당 주의 날짜만 필터
+    var dates=sorted.filter(function(ds){return ds>=satStr&&ds<=friStr;});
+    var table={};
+    AGE_GROUPS.forEach(function(ag){table[ag]={};dates.forEach(function(ds){table[ag][ds]=0;});});
+    allData.forEach(function(d){
+        if(d.isTimeboard||d.isSpecial)return;
+        if(d.dateStr<satStr||d.dateStr>friStr)return;
+        var ag=classifyAgeGroup(d.age);
+        if(table[ag]&&table[ag].hasOwnProperty(d.dateStr))table[ag][d.dateStr]++;
+    });
+    return{dates:dates,table:table};
+}
+
+// 실제 유입 데이터 분석: 언어별/매체별 수량
+function getActualInflowSummary(){
+    if(!actualInflowData.length)return null;
+    var byLang={'영어':0,'제2외국어':0,'톡이즈':0};
+    var byMedia={};
+    var byLangMedia={'영어':{},'제2외국어':{},'톡이즈':{}};
+    actualInflowData.forEach(function(d){
+        var lang=d.dbGroup==='영어'?'영어':d.dbGroup==='톡이즈'?'톡이즈':'제2외국어';
+        byLang[lang]++;
+        if(!byMedia[d.media])byMedia[d.media]=0;
+        byMedia[d.media]++;
+        if(!byLangMedia[lang][d.media])byLangMedia[lang][d.media]=0;
+        byLangMedia[lang][d.media]++;
+    });
+    return{byLang:byLang,byMedia:byMedia,byLangMedia:byLangMedia,total:actualInflowData.length};
+}
+
+// ======================== Analysis Functions ========================
+function getGlobalDOWDateCounts(){var c={};WEEK_ORDER.forEach(function(d){c[d]={};});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial)c[d.dayOfWeek][d.dateStr]=true;});var r={};WEEK_ORDER.forEach(function(d){r[d]=Math.max(Object.keys(c[d]).length,1);});return r;}
+function getDailySummary(){var m={};allData.forEach(function(d){if(!m[d.dateStr]){m[d.dateStr]={date:d.inflowDate,dateStr:d.dateStr,total:0};DB_TYPES.forEach(function(t){m[d.dateStr][t]=0;});m[d.dateStr]['타임보드']=0;m[d.dateStr]['스페셜']=0;}var r=m[d.dateStr];if(d.isTimeboard)r['타임보드']++;else if(d.isSpecial)r['스페셜']++;else r[d.dbType]++;r.total++;});return Object.values(m).sort(function(a,b){return a.date-b.date;});}
+function getDOWAverageByType(){var gc=getGlobalDOWDateCounts(),s={};DB_TYPES.forEach(function(dt){s[dt]={};WEEK_ORDER.forEach(function(d){s[dt][d]=0;});});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial)s[d.dbType][d.dayOfWeek]++;});var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){r[dt][d]=Math.round(s[dt][d]/gc[d]);});});return r;}
+function getMediaDOWTable(f){var gc=getGlobalDOWDateCounts(),s={};MEDIA_TYPES.forEach(function(m){s[m]={};WEEK_ORDER.forEach(function(d){s[m][d]=0;});});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.dbType!==f)return;if(s[d.media])s[d.media][d.dayOfWeek]++;});var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=Math.round(s[m][d]/gc[d]);});});return r;}
+function getBatchDOWDateCounts(p){var c={};WEEK_ORDER.forEach(function(d){c[d]={};});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.batchPeriod!==p)return;c[d.batchDayOfWeek][d.batchDate]=true;});var r={};WEEK_ORDER.forEach(function(d){r[d]=Math.max(Object.keys(c[d]).length,1);});return r;}
+function getMediaDOWTableByPeriod(f,p){var gc=getBatchDOWDateCounts(p),s={};MEDIA_TYPES.forEach(function(m){s[m]={};WEEK_ORDER.forEach(function(d){s[m][d]=0;});});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.dbType!==f||d.batchPeriod!==p)return;if(s[d.media])s[d.media][d.batchDayOfWeek]++;});var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=Math.round(s[m][d]/gc[d]);});});return r;}
+function getDBTypeBreakdown(){var m={};DB_TYPES.forEach(function(t){m[t]=0;});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial)m[d.dbType]++;});return m;}
+function getMediaGroupBreakdown(){var m={};MEDIA_TYPES.forEach(function(t){m[t]=0;});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&m.hasOwnProperty(d.media))m[d.media]++;});return m;}
+function getSpecialTimeAverage(type){var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};var hm={},dh={};allData.filter(fn).forEach(function(d){var k=d.broadcastHour!==null?d.broadcastHour:'unknown';if(!hm[k]){hm[k]=0;dh[k]={};}hm[k]++;dh[k][d.dateStr]=true;});var r={};Object.keys(hm).forEach(function(k){r[k]=Math.round(hm[k]/(Object.keys(dh[k]).length||1));});return r;}
+function getSpecialTimeAvgByType(type){var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};var m={},dh={};allData.filter(fn).forEach(function(d){var k=d.broadcastHour!==null?d.broadcastHour:'unknown';if(!m[k]){m[k]={};DB_TYPES.forEach(function(t){m[k][t]=0;});dh[k]={};}m[k][d.dbType]++;dh[k][d.dateStr]=true;});var r={};Object.keys(m).forEach(function(k){var n=Object.keys(dh[k]).length||1;r[k]={};DB_TYPES.forEach(function(t){r[k][t]=Math.round(m[k][t]/n);});r[k].total=DB_TYPES.reduce(function(s,t){return s+r[k][t];},0);});return r;}
+
+// 한국 공휴일 (2026년 기준, 매년 업데이트 필요)
+var KR_HOLIDAYS=['2026-01-01','2026-01-28','2026-01-29','2026-01-30','2026-03-01','2026-05-01','2026-05-05','2026-05-24','2026-06-06','2026-08-15','2026-09-24','2026-09-25','2026-09-26','2026-10-03','2026-10-09','2026-12-25'];
+
+function isWeekendOrHoliday(dateStr){
+    var d=new Date(dateStr+'T00:00:00');
+    var dow=d.getDay();
+    if(dow===0||dow===6)return true;
+    return KR_HOLIDAYS.indexOf(dateStr)>=0;
+}
+
+// 미디어코드에서 패키지 추출 (naver_tb_tw_1AM → tw, naver_sp_lggo_5PM → lggo)
+function extractPackage(mc){
+    if(!mc)return'unknown';
+    var c=mc.toLowerCase();
+    // naver_tb_ 또는 naver_sp_ 뒤의 부분에서 시간 제거
+    var m=c.match(/naver_(?:tb|sp)_(.+?)_?\d{1,2}(?:am|pm)$/i);
+    if(m)return m[1];
+    // 시간 없는 경우
+    var m2=c.match(/naver_(?:tb|sp)_(.+)$/i);
+    if(m2)return m2[1];
+    return'unknown';
+}
+
+// 고유 패키지 목록 추출
+function getAvailablePackages(type){
+    var pkgs={};
+    var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
+    allData.filter(fn).forEach(function(d){
+        var pkg=extractPackage(d.mediaCode);
+        if(pkg!=='unknown')pkgs[pkg]=true;
+    });
+    tbspData.forEach(function(d){
+        if(d.type!==type)return;
+        var pkg=extractPackage(d.mediaCode);
+        if(pkg!=='unknown')pkgs[pkg]=true;
+    });
+    return Object.keys(pkgs).sort();
+}
+
+// 패키지별 시간대 평균 (주말/평일 구분)
+function getPackageTimeAvg(type,isWeekend,pkg){
+    var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
+    var totalByHour={},datesByHour={};
+    allData.filter(fn).forEach(function(d){
+        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
+        if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
+        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
+        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
+        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+    });
+    tbspData.forEach(function(d){
+        if(d.type!==type)return;
+        if(d.isWeekend!==isWeekend)return;
+        if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
+        var k=d.hour!==null?d.hour:'unknown';
+        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
+        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+    });
+    var r={};Object.keys(totalByHour).forEach(function(k){
+        var n=Object.keys(datesByHour[k]).length||1;
+        r[k]={total:Math.round(totalByHour[k]/n)};
+        DB_TYPES.forEach(function(t){r[k][t]=0;});
+    });
+    // DB종류별 비율
+    var typeRatio={};
+    allData.filter(fn).forEach(function(d){
+        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
+        if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
+        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
+        if(!typeRatio[k]){typeRatio[k]={};DB_TYPES.forEach(function(t){typeRatio[k][t]=0;});typeRatio[k]._sum=0;}
+        typeRatio[k][d.dbType]++;typeRatio[k]._sum++;
+    });
+    Object.keys(r).forEach(function(k){
+        if(typeRatio[k]&&typeRatio[k]._sum>0){DB_TYPES.forEach(function(t){r[k][t]=Math.round(r[k].total*typeRatio[k][t]/typeRatio[k]._sum);});}
+        else{r[k]['영어']=r[k].total;}
+    });
+    return r;
+}
+
+// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData + tbspData 통합)
+function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
+    var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
+    var totalByHour={},datesByHour={};
+
+    // 1) 기존 allData에서 수집
+    allData.filter(fn).forEach(function(d){
+        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
+        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
+        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
+        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+    });
+
+    // 2) tbspData에서 추가 수집 (DB종류 구분 없이 총건수만)
+    tbspData.forEach(function(d){
+        if(d.type!==type)return;
+        if(d.isWeekend!==isWeekend)return;
+        var k=d.hour!==null?d.hour:'unknown';
+        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
+        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+    });
+
+    var r={};Object.keys(totalByHour).forEach(function(k){
+        var n=Object.keys(datesByHour[k]).length||1;
+        r[k]={total:Math.round(totalByHour[k]/n)};
+        // DB종류별 비율은 allData 기준으로 (tbspData에는 종류 정보 없으므로)
+        DB_TYPES.forEach(function(t){r[k][t]=0;});
+    });
+
+    // allData에서 DB종류별 비율 계산 후 total에 적용
+    var fn2=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
+    var typeRatio={};
+    allData.filter(fn2).forEach(function(d){
+        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
+        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
+        if(!typeRatio[k]){typeRatio[k]={};DB_TYPES.forEach(function(t){typeRatio[k][t]=0;});typeRatio[k]._sum=0;}
+        typeRatio[k][d.dbType]++;typeRatio[k]._sum++;
+    });
+    Object.keys(r).forEach(function(k){
+        if(typeRatio[k]&&typeRatio[k]._sum>0){
+            DB_TYPES.forEach(function(t){r[k][t]=Math.round(r[k].total*typeRatio[k][t]/typeRatio[k]._sum);});
+        }else{
+            // 비율 정보 없으면 전부 영어로
+            r[k]['영어']=r[k].total;
+        }
+    });
+    return r;
+}
+
+// ======================== AI Trend Prediction ========================
+function getWeekStart(ds){var d=new Date(ds+'T00:00:00'),dw=d.getDay(),df=(dw+1)%7;var s=new Date(d);s.setDate(s.getDate()-df);return s.toISOString().slice(0,10);}
+function round5(v){return Math.round(v/5)*5;}
+function smartPredict(wv){if(!wv.length)return 0;if(wv.length===1)return round5(wv[0]);var n=wv.length,a=0.35,ew=wv[0];for(var i=1;i<n;i++)ew=a*wv[i]+(1-a)*ew;var sx=0,sy=0,sxy=0,sx2=0;for(var i=0;i<n;i++){sx+=i;sy+=wv[i];sxy+=i*wv[i];sx2+=i*i;}var dn=n*sx2-sx*sx,sl=dn?((n*sxy-sx*sy)/dn):0;return Math.max(0,round5(0.6*ew+0.4*(ew+sl)));}
+function getWeeklySeriesForDOW(fn,dow,ub){var wm={};allData.forEach(function(d){if(!fn(d))return;var dw=ub?d.batchDayOfWeek:d.dayOfWeek;if(dw!==dow)return;var dk=ub?d.batchDate:d.dateStr;var wk=getWeekStart(dk);wm[wk]=(wm[wk]||0)+1;});return Object.keys(wm).sort().map(function(w){return wm[w];});}
+function getSmartDOWAverageByType(){var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){r[dt][d]=smartPredict(getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===dt;},d,false));});});return r;}
+function getSmartMediaDOWTable(f){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=smartPredict(getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===f&&x.media===m;},d,false));});});return r;}
+function getSmartMediaDOWTableByPeriod(f,p){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=smartPredict(getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===f&&x.batchPeriod===p&&x.media===m;},d,true));});});return r;}
+function getSmartMediaDOWTableForGroup(dts){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTable(dt);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});});});return r;}
+function getSmartMediaDOWTableByPeriodForGroup(dts,p){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTableByPeriod(dt,p);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});});});return r;}
+
+// ======================== Modal ========================
+function openModal(){document.getElementById('uploadModal').classList.add('active');updateModalUI();}
+function closeModal(){document.getElementById('uploadModal').classList.remove('active');}
+function updateModalUI(){
+    var el=document.getElementById('fileList');
+    if(uploadedFiles.length===0) el.innerHTML='<p style="color:#999;font-size:0.85rem;">업로드된 DB 파일 없음</p>';
+    else el.innerHTML=uploadedFiles.map(function(f,i){
+        return'<span class="file-item">'+f+'<span class="file-del" onclick="removeUploadedFile('+i+')" title="삭제">&times;</span></span>';
+    }).join('');
+    var sm=document.getElementById('modalSummary');
+    if(!allData.length)sm.textContent='';
+    else{var ds={};allData.forEach(function(d){ds[d.dateStr]=true;});var dk=Object.keys(ds).sort();sm.textContent='총 '+allData.length.toLocaleString()+'건 | '+dk[0]+' ~ '+dk[dk.length-1]+' ('+dk.length+'일)';}
+    var ael=document.getElementById('attendFileList');
+    ael.innerHTML=attendanceFiles.length?attendanceFiles.map(function(f){return'<span class="file-item file-item-attend">'+f+'</span>';}).join(''):'';
+    var as=document.getElementById('attendSummary');
+    if(!attendanceData.length)as.textContent='';
+    else{var cats={'영어':0,'제2외국어':0,'톡이즈':0};attendanceData.forEach(function(p){var c=classifyStaffDB(p);if(cats.hasOwnProperty(c))cats[c]++;});as.textContent='근태 '+attendanceMonth+' | '+attendanceData.length+'명 (영어'+cats['영어']+' 제2외'+cats['제2외국어']+' 톡이즈'+cats['톡이즈']+')';}
+    // tbsp
+    var tel=document.getElementById('tbspFileList');
+    tel.innerHTML=tbspFiles.length?tbspFiles.map(function(f){return'<span class="file-item" style="background:#e0f7fa;color:#00838f;">'+f+'</span>';}).join(''):'';
+    var tsum=document.getElementById('tbspSummary');
+    if(!tbspData.length)tsum.textContent='';
+    else{var tc=0,sc2=0;tbspData.forEach(function(d){if(d.type==='timeboard')tc++;else sc2++;});
+        var ds2={};tbspData.forEach(function(d){ds2[d.dateStr]=true;});var dk2=Object.keys(ds2).sort();
+        tsum.textContent='총 '+tbspData.length.toLocaleString()+'건 (타임보드 '+tc.toLocaleString()+' / 스페셜 '+sc2.toLocaleString()+') | '+dk2[0]+' ~ '+dk2[dk2.length-1];}
+    // 실제 유입 데이터
+    var acEl=document.getElementById('actualFileList');
+    acEl.innerHTML=actualInflowFiles.length?actualInflowFiles.map(function(f){return'<span class="file-item file-item-actual">'+f+'</span>';}).join(''):'';
+    var acSum=document.getElementById('actualSummary');
+    if(!actualInflowData.length)acSum.textContent='';
+    else{
+        var acS=getActualInflowSummary();
+        acSum.textContent='총 '+acS.total.toLocaleString()+'건 (영어 '+acS.byLang['영어']+' / 제2외 '+acS.byLang['제2외국어']+' / 톡이즈 '+acS.byLang['톡이즈']+')';
+    }
+}
+async function removeUploadedFile(idx){
+    var fileName=uploadedFiles[idx];
+    if(!confirm(fileName+' 파일의 데이터를 삭제하시겠습니까?'))return;
+    showLoading('파일 데이터 삭제 중...');
+    updateLoading(30,fileName+' 제거 중...');
+    await new Promise(function(r){setTimeout(r,30);});
+    var before=allData.length;
+    allData=allData.filter(function(d){return d.fileName!==fileName;});
+    uploadedFiles.splice(idx,1);
+    var removed=before-allData.length;
+    updateLoading(70,'저장 중...');
+    await new Promise(function(r){setTimeout(r,30);});
+    await saveToStorage();
+    updateLoading(100,'완료!');
+    await new Promise(function(r){setTimeout(r,300);});
+    hideLoading();
+    updateModalUI();updateAll();
+}
+function toggleCollapsible(id){var el=document.getElementById(id);el.classList.toggle('open');}
+
+// ======================== Schedule ========================
+function updatePctTotal(){var t=0;DB_TYPES.forEach(function(dt){t+=parseInt(document.getElementById('pct_'+dt).value)||0;});var el=document.getElementById('pctTotal');el.textContent='합계: '+t+'%';el.style.color=t===100?'#2e7d32':'#e53935';}
+function addSchedule(){var type=document.getElementById('schedType').value,day=parseInt(document.getElementById('schedDay').value),hour=document.getElementById('schedHour').value!==''?parseInt(document.getElementById('schedHour').value):null;
+    var pcts={},pt=0;DB_TYPES.forEach(function(dt){var v=parseInt(document.getElementById('pct_'+dt).value)||0;pcts[dt]=v;pt+=v;});
+    if(pt!==100){alert('비중 합계가 100%여야 합니다 (현재: '+pt+'%)');return;}
+    // 선택한 요일의 실제 날짜로 주말/공휴일 판단
+    var wd=getNextWeekDates(),dayIdx=WEEK_ORDER.indexOf(day);
+    var dateStr=dayIdx>=0?wd[dayIdx]:'';
+    var weekend=dateStr?isWeekendOrHoliday(dateStr):(day===0||day===6);
+    var dayTypeLabel=weekend?'주말':'평일';
+    // DB종류별 평균을 각각 구해서, 비중(%)을 곱해 예상수량 산출
+    var avg=getSpecialTimeAvgByTypeByDayType(type,weekend);
+    var hk=hour!==null?hour:'unknown',hd=avg[hk]||{};
+    var bd={},tp=0;
+    DB_TYPES.forEach(function(dt){
+        var dtAvg=hd[dt]||0; // 해당 DB종류의 시간대별 평균
+        var pct=pcts[dt]||0;
+        if(pct>0&&dtAvg>0){
+            bd[dt]=round5(dtAvg*pct/100);
+        }else if(pct>0){
+            // 해당 DB종류의 데이터가 없으면 전체 평균에서 비중 적용
+            bd[dt]=round5((hd.total||0)*pct/100);
+        }else{
+            bd[dt]=0;
+        }
+        tp+=bd[dt];
+    });
+    schedules.push({id:Date.now(),type:type,day:day,hour:hour,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel});
+    sortSchedules();saveSchedules();
+    updateScheduleUI();updateTotalPrediction();}
+// 요일별 스케줄 tooltip 생성: {type} → { dayIdx: "tooltip text" }
+function buildScheduleTooltips(type){
+    var pdl=getPredDateLabels(),tips={};
+    for(var i=0;i<7;i++)tips[i]=[];
+    schedules.forEach(function(s){
+        if(type&&s.type!==type)return;
+        var dd=getScheduleDistDay(s);
+        var idx=WEEK_ORDER.indexOf(dd);
+        if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;
+        if(idx===-1)return;
+        var dayLabel=pdl[WEEK_ORDER.indexOf(s.day)];
+        var bdParts=[];if(s.breakdown){DB_TYPES.forEach(function(dt){if(s.breakdown[dt]>0)bdParts.push(dt+s.breakdown[dt]);});}
+        var tipText=dayLabel+' '+formatHour(s.hour)+' '+s.totalPredicted+'건';
+        if(bdParts.length>1)tipText+=' ('+bdParts.join(' ')+')';
+        tips[idx].push(tipText);
+    });
+    return tips;
+}
+function buildScheduleTooltipsByDBType(schedType, dbType){
+    var pdl=getPredDateLabels(),tips={};
+    for(var i=0;i<7;i++)tips[i]=[];
+    schedules.forEach(function(s){
+        if(schedType&&s.type!==schedType)return;
+        var dd=getScheduleDistDay(s);
+        var idx=WEEK_ORDER.indexOf(dd);
+        if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;
+        if(idx===-1)return;
+        var v=s.breakdown&&s.breakdown[dbType]?s.breakdown[dbType]:0;
+        if(v<=0)return;
+        var dayLabel=pdl[WEEK_ORDER.indexOf(s.day)];
+        tips[idx].push(dayLabel+' '+dbType+' '+formatHour(s.hour)+' '+v+'건');
+    });
+    return tips;
+}
+function buildScheduleTooltipsByGroup(schedType, dbTypes){
+    var pdl=getPredDateLabels(),tips={};
+    for(var i=0;i<7;i++)tips[i]=[];
+    schedules.forEach(function(s){
+        if(schedType&&s.type!==schedType)return;
+        var dd=getScheduleDistDay(s);
+        var idx=WEEK_ORDER.indexOf(dd);
+        if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;
+        if(idx===-1)return;
+        var v=0;
+        var parts=[];
+        dbTypes.forEach(function(dt){var dv=s.breakdown&&s.breakdown[dt]?s.breakdown[dt]:0;v+=dv;if(dv>0)parts.push(dt+' '+dv);});
+        if(v<=0)return;
+        var dayLabel=pdl[WEEK_ORDER.indexOf(s.day)];
+        tips[idx].push(dayLabel+' '+formatHour(s.hour)+' '+v+'건'+(parts.length>1?' ('+parts.join(' ')+')':''));
+    });
+    return tips;
+}
+
+function sortSchedules(){
+    schedules.sort(function(a,b){
+        var ai=WEEK_ORDER.indexOf(a.day),bi=WEEK_ORDER.indexOf(b.day);
+        if(ai!==bi)return ai-bi;
+        return(a.hour||0)-(b.hour||0);
+    });
+}
+function saveSchedules(){idbPut('schedules',schedules);}
+function removeSchedule(id){schedules=schedules.filter(function(s){return s.id!==id;});saveSchedules();updateScheduleUI();updateTotalPrediction();}
+function getScheduleDistDay(s){return(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR)?(s.day+1)%7:s.day;}
+function updateScheduleUI(){
+    var tb=document.querySelector('#specialPredTable tbody'),pdl=getPredDateLabels();
+    if(!schedules.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#999;">추가된 스케줄이 없습니다</td></tr>';return;}
+    tb.innerHTML=schedules.map(function(s){
+        var pp=[],dp=[];DB_TYPES.forEach(function(dt){if(s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');if(s.breakdown[dt]>0)dp.push(dt+' '+s.breakdown[dt]);});
+        var dayIdx=WEEK_ORDER.indexOf(s.day);
+        var dayLabel=dayIdx>=0?pdl[dayIdx]:DAY_NAMES[s.day];
+        var dtBadge=s.dayType==='주말'?'<span style="display:inline-block;background:#fff3e0;color:#e65100;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">주말</span>':'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">평일</span>';
+        var ps=pp.join(' / '),pr=s.totalPredicted+'건'+(dp.length>1?' ('+dp.join(' / ')+')':'');
+        var dd=getScheduleDistDay(s),sh=dd!==s.day;
+        var distIdx=WEEK_ORDER.indexOf(dd);
+        var distLabel=distIdx>=0?pdl[distIdx]:DAY_NAMES[dd];
+        if(sh)distLabel+=' <span style="color:#d84315;font-size:0.72rem;">(다음날)</span>';
+        return'<tr><td><span class="badge '+(s.type==='timeboard'?'badge-blue':'badge-orange')+'">'+(s.type==='timeboard'?'타임보드':'스페셜')+'</span></td>'
+            +'<td>'+dayLabel+dtBadge+'</td><td>'+formatHour(s.hour)+'</td><td style="font-size:0.8rem;">'+ps+'</td>'
+            +'<td class="num">'+pr+'</td><td>'+distLabel+'</td>'
+            +'<td><span style="color:#e53935;cursor:pointer;" onclick="removeSchedule('+s.id+')">삭제</span></td></tr>';
+    }).join('');
+}
+
+// ======================== UI Updates ========================
+function updateAll(){
+    var has=allData.length>0;
+    document.getElementById('analysisContent').style.display=has?'block':'none';
+    document.getElementById('analysisEmpty').style.display=has?'none':'block';
+    document.getElementById('predictionContent').style.display=has?'block':'none';
+    document.getElementById('predictionEmpty').style.display=has?'none':'block';
+    document.getElementById('shareContent').style.display=has?'block':'none';
+    document.getElementById('shareEmpty').style.display=has?'none':'block';
+    updateHeaderInfo();renderTierConfigUI();
+    if(!has)return;
+    updateCharts();updateAnalysisTables();updatePrediction();
+}
+function updateHeaderInfo(){var el=document.getElementById('headerInfo');if(!allData.length){el.textContent='';return;}var ds={};allData.forEach(function(d){ds[d.dateStr]=true;});var info=allData.length.toLocaleString()+'건 | '+Object.keys(ds).length+'일';if(attendanceData.length)info+=' | 근태 '+attendanceMonth;el.textContent=info;}
+
+function updateCharts(){
+    var daily=getDailySummary(),dowAvg=getDOWAverageByType(),dbBk=getDBTypeBreakdown(),mBk=getMediaGroupBreakdown(),tbAvg=getSpecialTimeAverage('timeboard'),spAvg=getSpecialTimeAverage('special');
+    renderChart('dailyTrendChart','line',{labels:daily.map(function(d){return d.dateStr.slice(5);}),datasets:[
+        {label:'영어',data:daily.map(function(d){return d['영어'];}),borderColor:COLORS['영어'],backgroundColor:COLORS['영어']+'20',fill:true,tension:0.3},
+        {label:'제2외국어',data:daily.map(function(d){return(d['일본어']||0)+(d['중국어']||0)+(d['스페인어']||0)+(d['프랑스어']||0);}),borderColor:COLORS['제2외국어'],backgroundColor:COLORS['제2외국어']+'20',fill:true,tension:0.3},
+        {label:'톡이즈',data:daily.map(function(d){return d['톡이즈'];}),borderColor:COLORS['톡이즈'],backgroundColor:COLORS['톡이즈']+'20',fill:true,tension:0.3}]});
+    var eDow=WEEK_ORDER.map(function(d){return dowAvg['영어'][d];}),sDow=WEEK_ORDER.map(function(d){return(dowAvg['일본어'][d]||0)+(dowAvg['중국어'][d]||0)+(dowAvg['스페인어'][d]||0)+(dowAvg['프랑스어'][d]||0);}),tDow=WEEK_ORDER.map(function(d){return dowAvg['톡이즈'][d];});
+    renderChart('dowChart','bar',{labels:WEEK_LABELS,datasets:[{label:'영어',data:eDow,backgroundColor:COLORS['영어']},{label:'제2외국어',data:sDow,backgroundColor:COLORS['제2외국어']},{label:'톡이즈',data:tDow,backgroundColor:COLORS['톡이즈']}]},{scales:{x:{stacked:true},y:{stacked:true}}});
+    var dbL=DB_TYPES.filter(function(t){return dbBk[t]>0;});renderChart('dbTypeChart','doughnut',{labels:dbL,datasets:[{data:dbL.map(function(t){return dbBk[t];}),backgroundColor:dbL.map(function(t){return COLORS[t];})}]});
+    var mL=MEDIA_TYPES.filter(function(m){return mBk[m]>0;});renderChart('mediaGroupChart','doughnut',{labels:mL,datasets:[{data:mL.map(function(m){return mBk[m];}),backgroundColor:mL.map(function(m){return MEDIA_COLORS[m];})}]});
+    var tbH=Object.keys(tbAvg).filter(function(k){return k!=='unknown';}).sort(function(a,b){return a-b;});
+    if(tbH.length)renderChart('tbTimeChart','bar',{labels:tbH.map(function(h){return formatHour(parseInt(h));}),datasets:[{label:'평균 DB수',data:tbH.map(function(h){return tbAvg[h];}),backgroundColor:COLORS['타임보드']}]});
+    var spH=Object.keys(spAvg).filter(function(k){return k!=='unknown';}).sort(function(a,b){return a-b;});
+    if(spH.length)renderChart('spTimeChart','bar',{labels:spH.map(function(h){return formatHour(parseInt(h));}),datasets:[{label:'평균 DB수',data:spH.map(function(h){return spAvg[h];}),backgroundColor:COLORS['스페셜']}]});
+    populateHourSelector();
+}
+
+function buildTableHtml(td){var tt=WEEK_ORDER.map(function(){return 0;});var rh=MEDIA_TYPES.map(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=td[m][d];tt[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);if(!rt)return'';return'<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+rt+'</strong></td></tr>';}).join('');rh+='<tr class="highlight-row"><td>합계</td>'+tt.map(function(t){return'<td class="num">'+t+'</td>';}).join('')+'<td class="num"><strong>'+tt.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';return rh;}
+function wrapTable(bh){return'<div class="table-wrap"><table><thead><tr><th>매체</th><th class="num">토</th><th class="num">일</th><th class="num">월</th><th class="num">화</th><th class="num">수</th><th class="num">목</th><th class="num">금</th><th class="num">합계</th></tr></thead><tbody>'+bh+'</tbody></table></div>';}
+function hasTableData(td){return MEDIA_TYPES.some(function(m){return WEEK_ORDER.some(function(d){return td[m][d]>0;});});}
+
+function updateAnalysisTables(){var c=document.getElementById('analysisTables'),h='';DB_TYPES.forEach(function(dt){var ta=getMediaDOWTable(dt);if(!hasTableData(ta))return;var am=getMediaDOWTableByPeriod(dt,'오전'),pm=getMediaDOWTableByPeriod(dt,'오후');h+='<div class="section"><h3>'+dt+' - 매체별 / 요일별 평균 DB수</h3><p class="section-sub">전체</p>'+wrapTable(buildTableHtml(ta));if(hasTableData(am))h+='<p class="section-sub">오전</p>'+wrapTable(buildTableHtml(am));if(hasTableData(pm))h+='<p class="section-sub">오후</p>'+wrapTable(buildTableHtml(pm));h+='</div>';});c.innerHTML=h;}
+
+function buildPredRow(l,vs,hl){var rt=vs.reduce(function(a,b){return a+b;},0);return'<tr'+(hl?' class="highlight-row"':'')+'><td>'+l+'</td>'+vs.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+rt+'</strong></td></tr>';}
+function makeTH(firstCol,labels){return'<thead><tr><th>'+firstCol+'</th>'+labels.map(function(l){return'<th class="num">'+l+'</th>';}).join('')+'<th class="num">합계</th></tr></thead>';}
+function PTH(){return makeTH('매체',getPredDateLabels());}
+function ATHCOL(){return makeTH('매체',WEEK_LABELS);} // analysis용 (일반 요일)
+
+function buildPredSection(title,dts){
+    dts=Array.isArray(dts)?dts:[dts];
+    var tAM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오전'):getSmartMediaDOWTableByPeriod(dts[0],'오전');
+    var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
+    var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
+    if(!hasTableData(tAll))return'';
+    var h='<div class="section"><h3>'+title+' - 차주 매체별 예상</h3>';
+    var bh='',am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
+    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=tAM[m][d];am[i]+=v;return v;});if(vs.reduce(function(a,b){return a+b;},0)>0)bh+=buildPredRow(m,vs,false);});
+    bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+v+'</strong></td>';}).join('')+'<td class="num"><strong>'+am.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){pm[i]+=tPM[m][d];});});
+    bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+pm.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    var tv=WEEK_ORDER.map(function(_,i){return am[i]+pm[i];});
+    bh+=buildPredRow('총 합계',tv,true);
+    h+='<div class="table-wrap"><table>'+PTH()+'<tbody>'+bh+'</tbody></table></div></div>';
+    return h;
+}
+
+var lastPredData={};
+
+function updatePrediction(){
+    var nw=getNextWeekRange(),pdl=getPredDateLabels();
+    document.getElementById('predWeekLabel').innerHTML='예상 기간: '+formatDate(nw.start)+' (토) ~ '+formatDate(nw.end)+' (금) &nbsp;<span style="display:inline-block;background:#e8eaf6;color:#1a237e;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">AI 추세 예측</span>';
+    // 분배일 토글
+    var tgl='<span class="wd-label">분배일:</span>';
+    pdl.forEach(function(l,i){var on=workingDayToggle[i];tgl+='<div class="wd-day'+(on?'':' wd-off')+'"><span>'+l+'</span><label class="toggle-switch"><input type="checkbox"'+(on?' checked':'')+' onchange="toggleWorkingDay('+i+')"><span class="toggle-slider"></span></label></div>';});
+    document.getElementById('workingDayToggles').innerHTML=tgl;
+    var c=document.getElementById('predictionTables'),h='';
+    h+=buildPredSection('영어','영어');
+    h+=buildPredSection('제2외국어',SEC_LANG_TYPES);
+    SEC_LANG_TYPES.forEach(function(dt){h+=buildPredSection(dt,dt);});
+    h+=buildPredSection('톡이즈','톡이즈');
+    c.innerHTML=h;
+    updateScheduleUI();updateTotalPrediction();updateTierPrediction();updateShareTab();
+}
+
+function updateTotalPrediction(){
+    var da=getSmartDOWAverageByType();if(!da)return;
+    var pdl=getPredDateLabels();
+    document.getElementById('totalPredHead').innerHTML='<tr><th>구분</th>'+pdl.map(function(l){return'<th class="num">'+l+'</th>';}).join('')+'<th class="num">합계</th></tr>';
+    var tb=document.querySelector('#totalPredTable tbody');
+    var rdRaw={};DB_TYPES.forEach(function(dt){rdRaw[dt]=WEEK_ORDER.map(function(d){return da[dt][d];});});
+    rdRaw['제2외국어']=WEEK_ORDER.map(function(d){return SEC_LANG_TYPES.reduce(function(s,dt){return s+da[dt][d];},0);});
+    // carryover 적용: 비분배일 DB를 다음 분배일로 이월
+    var rd={};
+    rd['영어']=applyCarryover(rdRaw['영어']);
+    rd['제2외국어']=applyCarryover(rdRaw['제2외국어']);
+    rd['톡이즈']=applyCarryover(rdRaw['톡이즈']);
+    SEC_LANG_TYPES.forEach(function(dt){rd[dt]=applyCarryover(rdRaw[dt]);});
+    var tbD=WEEK_ORDER.map(function(){return 0;}),spD=WEEK_ORDER.map(function(){return 0;});
+    var sc={'영어':WEEK_ORDER.map(function(){return 0;}),'제2외국어':WEEK_ORDER.map(function(){return 0;}),'톡이즈':WEEK_ORDER.map(function(){return 0;})};
+    // Per-DB-type timeboard/special breakdown
+    var tbByType={},spByType={};
+    DB_TYPES.forEach(function(dt){tbByType[dt]=WEEK_ORDER.map(function(){return 0;});spByType[dt]=WEEK_ORDER.map(function(){return 0;});});
+    schedules.forEach(function(s){var dd=getScheduleDistDay(s),idx=WEEK_ORDER.indexOf(dd);if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;if(idx===-1)return;var tot=s.totalPredicted||0;if(s.type==='timeboard')tbD[idx]+=tot;else spD[idx]+=tot;if(s.breakdown){DB_TYPES.forEach(function(dt){var v=s.breakdown[dt]||0;if(s.type==='timeboard')tbByType[dt][idx]+=v;else spByType[dt][idx]+=v;});sc['영어'][idx]+=(s.breakdown['영어']||0);sc['제2외국어'][idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);sc['톡이즈'][idx]+=(s.breakdown['톡이즈']||0);}});
+    // Aggregate TB/SP by group
+    var tbByGroup={'영어':tbByType['영어'],'제2외국어':WEEK_ORDER.map(function(_,i){return SEC_LANG_TYPES.reduce(function(s,dt){return s+tbByType[dt][i];},0);}),'톡이즈':tbByType['톡이즈']};
+    var spByGroup={'영어':spByType['영어'],'제2외국어':WEEK_ORDER.map(function(_,i){return SEC_LANG_TYPES.reduce(function(s,dt){return s+spByType[dt][i];},0);}),'톡이즈':spByType['톡이즈']};
+    var rows='';
+    var tbTips=buildScheduleTooltips('timeboard'),spTips=buildScheduleTooltips('special'),allTips=buildScheduleTooltips(null);
+    var tbTipsEng=buildScheduleTooltipsByDBType('timeboard','영어'),spTipsEng=buildScheduleTooltipsByDBType('special','영어');
+    var tbTipsSec=buildScheduleTooltipsByGroup('timeboard',SEC_LANG_TYPES),spTipsSec=buildScheduleTooltipsByGroup('special',SEC_LANG_TYPES);
+    var tbTipsTalk=buildScheduleTooltipsByDBType('timeboard','톡이즈'),spTipsTalk=buildScheduleTooltipsByDBType('special','톡이즈');
+    function sumArr(a){return a.reduce(function(s,v){return s+v;},0);}
+    function addArr(a,b){return a.map(function(v,i){return v+b[i];});}
+    function tipCell(v,tips,i){if(tips&&tips[i]&&tips[i].length)return'<td class="num has-tip">'+v+'<div class="tip-box">'+tips[i].join('<br>')+'</div></td>';return'<td class="num">'+v+'</td>';}
+    function totalRow(l,vs,cls){var rt=sumArr(vs);return'<tr class="'+(cls||'highlight-row')+'"><td><strong>'+l+'</strong></td>'+vs.map(function(v){return'<td class="num"><strong>'+v+'</strong></td>';}).join('')+'<td class="num"><strong>'+rt+'</strong></td></tr>';}
+    function subRow(l,vs,tips){var rt=sumArr(vs);return'<tr class="sub-row"><td>'+l+'</td>'+vs.map(function(v,i){return tipCell(v||'-',tips,i);}).join('')+'<td class="num">'+rt+'</td></tr>';}
+    // 영어
+    var engTotal=addArr(addArr(rd['영어'],tbByGroup['영어']),spByGroup['영어']);
+    rows+=totalRow('영어 합계',engTotal);
+    rows+=subRow('&nbsp;&nbsp;영어 일반',rd['영어']);
+    rows+=subRow('&nbsp;&nbsp;영어 타임보드',tbByGroup['영어'],tbTipsEng);
+    rows+=subRow('&nbsp;&nbsp;영어 스페셜',spByGroup['영어'],spTipsEng);
+    // 제2외국어
+    var secTotal=addArr(addArr(rd['제2외국어'],tbByGroup['제2외국어']),spByGroup['제2외국어']);
+    rows+=totalRow('제2외국어 합계',secTotal);
+    rows+=subRow('&nbsp;&nbsp;제2외국어 일반',rd['제2외국어']);
+    rows+=subRow('&nbsp;&nbsp;제2외국어 타임보드',tbByGroup['제2외국어'],tbTipsSec);
+    rows+=subRow('&nbsp;&nbsp;제2외국어 스페셜',spByGroup['제2외국어'],spTipsSec);
+    // 제2외국어 하위 언어별
+    SEC_LANG_TYPES.forEach(function(dt){
+        var dtTb=tbByType[dt],dtSp=spByType[dt];
+        var dtTotal=addArr(addArr(rd[dt],dtTb),dtSp);
+        var dtTbTips=buildScheduleTooltipsByDBType('timeboard',dt),dtSpTips=buildScheduleTooltipsByDBType('special',dt);
+        rows+='<tr style="background:#f0fdf4;"><td style="padding-left:28px;font-weight:600;">'+dt+' 합계</td>'+dtTotal.map(function(v){return'<td class="num" style="font-weight:600;">'+(v||'-')+'</td>';}).join('')+'<td class="num" style="font-weight:600;">'+sumArr(dtTotal)+'</td></tr>';
+        rows+='<tr class="sub-row"><td style="padding-left:42px;">일반</td>'+rd[dt].map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num">'+sumArr(rd[dt])+'</td></tr>';
+        if(sumArr(dtTb)>0)rows+='<tr class="sub-row"><td style="padding-left:42px;">타임보드</td>'+dtTb.map(function(v,i){return tipCell(v||'-',dtTbTips,i);}).join('')+'<td class="num">'+sumArr(dtTb)+'</td></tr>';
+        if(sumArr(dtSp)>0)rows+='<tr class="sub-row"><td style="padding-left:42px;">스페셜</td>'+dtSp.map(function(v,i){return tipCell(v||'-',dtSpTips,i);}).join('')+'<td class="num">'+sumArr(dtSp)+'</td></tr>';
+    });
+    // 톡이즈
+    var talkTotal=addArr(addArr(rd['톡이즈'],tbByGroup['톡이즈']),spByGroup['톡이즈']);
+    rows+=totalRow('톡이즈 합계',talkTotal);
+    rows+=subRow('&nbsp;&nbsp;톡이즈 일반',rd['톡이즈']);
+    rows+=subRow('&nbsp;&nbsp;톡이즈 타임보드',tbByGroup['톡이즈'],tbTipsTalk);
+    rows+=subRow('&nbsp;&nbsp;톡이즈 스페셜',spByGroup['톡이즈'],spTipsTalk);
+    // 총 합계
+    var totals=addArr(addArr(engTotal,secTotal),talkTotal);
+    var gt=sumArr(totals);
+    rows+=totalRow('총 합계',totals);
+    if(attendanceData.length){
+        var wd=getNextWeekDates();
+        rows+='<tr><td colspan="9" style="background:#f3e5f5;padding:6px 12px;font-weight:600;font-size:0.85rem;color:#7b1fa2;">1인 분배 예상 (근태 기반)</td></tr>';
+        ['영어','제2외국어','톡이즈'].forEach(function(cat){
+            var cr=rd[cat],cs=sc[cat];
+            var pp=WEEK_ORDER.map(function(d,i){var t=cr[i]+cs[i],s=getWorkingStaffForDate(wd[i],cat);return(s===null||s===0)?'-':Math.round(t/s);});
+            rows+='<tr class="per-person-row"><td>'+cat+' 1인</td>'+pp.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num">-</td></tr>';
+        });
+    }
+    tb.innerHTML=rows;
+    lastPredData={regularData:rd,tbByDay:tbD,spByDay:spD,totals:totals,grandTotal:gt,schedByCategory:sc,tbByType:tbByType,spByType:spByType,tbByGroup:tbByGroup,spByGroup:spByGroup};
+    var ds=[{label:'영어',data:rd['영어'],backgroundColor:COLORS['영어']},{label:'제2외국어',data:rd['제2외국어'],backgroundColor:COLORS['제2외국어']},{label:'톡이즈',data:rd['톡이즈'],backgroundColor:COLORS['톡이즈']},{label:'타임보드',data:tbD,backgroundColor:COLORS['타임보드']},{label:'스페셜',data:spD,backgroundColor:COLORS['스페셜']}];
+    renderChart('predChart','bar',{labels:pdl,datasets:ds},{scales:{x:{stacked:true},y:{stacked:true}}});
+}
+
+// ======================== Tier Distribution ========================
+function renderTierConfigUI(){
+    var wc=document.getElementById('tierWeightInputs');
+    wc.innerHTML=TIERS.map(function(t,i){return'<div class="tier-input"><label>'+t+'</label><input type="number" id="tw_'+i+'" value="'+tierConfig.weights[i]+'" step="0.01" onchange="saveTierConfig()"></div>';}).join('');
+    document.getElementById('secBasisUpper').value=tierConfig.secUpper;
+    document.getElementById('secBasisLower').value=tierConfig.secLower;
+    var gc=document.getElementById('groupConfigDisplay');
+    gc.innerHTML=Object.keys(tierConfig.groups).map(function(g){var cfg=tierConfig.groups[g];return'<div class="group-card"><h4>'+g+'그룹 ('+cfg.tiers.map(function(t){return TIERS[t];}).join(', ')+')</h4>'+cfg.tiers.map(function(t,i){return'<div class="tier-row"><span>'+TIERS[t]+'</span><input type="number" id="gb_'+g+'_'+t+'" value="'+cfg.basis[i]+'" min="0" style="width:45px;padding:2px;border:1px solid #ddd;border-radius:3px;text-align:center;" onchange="saveTierConfig()"></div>';}).join('')+'</div>';}).join('');
+}
+
+function updateTierPrediction(){
+    if(!allData.length)return;
+    var da=getSmartDOWAverageByType(),pdl=getPredDateLabels();
+    // 영어 일별 총계 (tier applies to 영어)
+    var engDaily=WEEK_ORDER.map(function(d){return da['영어'][d];});
+    // 제2외국어 일별 총계
+    var secDaily=WEEK_ORDER.map(function(d){return SEC_LANG_TYPES.reduce(function(s,dt){return s+da[dt][d];},0);});
+    // Add schedule contributions
+    var engSched=WEEK_ORDER.map(function(){return 0;}),secSched=WEEK_ORDER.map(function(){return 0;});
+    schedules.forEach(function(s){var dd=getScheduleDistDay(s),idx=WEEK_ORDER.indexOf(dd);if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;if(idx===-1)return;if(s.breakdown){engSched[idx]+=(s.breakdown['영어']||0);secSched[idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);}});
+    var engTotal=WEEK_ORDER.map(function(_,i){return engDaily[i]+engSched[i];});
+    var secTotal=WEEK_ORDER.map(function(_,i){return secDaily[i]+secSched[i];});
+
+    // Carryover: non-working days accumulate to next working day
+    var wd=getNextWeekDates();
+    var engEffective=applyCarryover(engTotal);
+    var secEffective=applyCarryover(secTotal);
+
+    // --- 계열별 예상 유입 수량 ---
+    var wSum=tierConfig.weights.reduce(function(a,b){return a+b;},0)||1;
+    var tierPredHtml='<div class="tier-table-grid"><div>';
+    tierPredHtml+='<p class="section-sub">영어</p><div class="table-wrap"><table><thead><tr><th>계열</th><th class="num">비중</th>';
+    pdl.forEach(function(l){tierPredHtml+='<th class="num">'+l+'</th>';});
+    tierPredHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    var tierDailyEng=[];
+    TIERS.forEach(function(t,i){
+        var w=tierConfig.weights[i]/wSum;
+        var vals=engEffective.map(function(v){return Math.round(v*w);});
+        tierDailyEng.push(vals);
+        tierPredHtml+='<tr><td>'+t+'</td><td class="num">'+tierConfig.weights[i].toFixed(1)+'%</td>'+vals.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+vals.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    });
+    tierPredHtml+='<tr class="highlight-row"><td>합계</td><td class="num">100%</td>'+engEffective.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+engEffective.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    tierPredHtml+='</tbody></table></div></div>';
+
+    // 제2외국어 상위 46% / 하위 54% (고정)
+    var secUpperPct=46,secLowerPct=54;
+    tierPredHtml+='<div><p class="section-sub">제2외국어</p><div class="table-wrap"><table><thead><tr><th>구분</th><th class="num">비중</th>';
+    pdl.forEach(function(l){tierPredHtml+='<th class="num">'+l+'</th>';});
+    tierPredHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    var secUpperVals=secEffective.map(function(v){return Math.round(v*secUpperPct/100);});
+    var secLowerVals=secEffective.map(function(v){return Math.round(v*secLowerPct/100);});
+    tierPredHtml+='<tr><td>상위 (0~2계열)</td><td class="num">'+secUpperPct+'%</td>'+secUpperVals.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+secUpperVals.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    tierPredHtml+='<tr><td>하위 (3~5계열)</td><td class="num">'+secLowerPct+'%</td>'+secLowerVals.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+secLowerVals.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    tierPredHtml+='<tr class="highlight-row"><td>합계</td><td class="num">100%</td>'+secEffective.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+secEffective.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    tierPredHtml+='</tbody></table></div></div></div>';
+
+    // 톡이즈
+    var talkDaily=WEEK_ORDER.map(function(d){return da['톡이즈'][d];});
+    var talkSched=WEEK_ORDER.map(function(){return 0;});
+    schedules.forEach(function(s){var dd=getScheduleDistDay(s),idx=WEEK_ORDER.indexOf(dd);if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;if(idx===-1)return;if(s.breakdown)talkSched[idx]+=(s.breakdown['톡이즈']||0);});
+    var talkTotal=WEEK_ORDER.map(function(_,i){return talkDaily[i]+talkSched[i];});
+    var talkEffective=applyCarryover(talkTotal);
+
+    tierPredHtml+='<p class="section-sub">톡이즈</p><div class="table-wrap"><table><thead><tr><th>구분</th><th class="num">비중</th>';
+    pdl.forEach(function(l){tierPredHtml+='<th class="num">'+l+'</th>';});
+    tierPredHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    tierPredHtml+='<tr class="highlight-row"><td>톡이즈 합계</td><td class="num">100%</td>'+talkEffective.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+talkEffective.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    tierPredHtml+='</tbody></table></div>';
+
+    document.getElementById('tierPredTables').innerHTML=tierPredHtml;
+    document.getElementById('tierPredSection').style.display='block';
+
+    // --- 그룹별/계열별 1인 분배 (균등 분배 후 계열 비율 적용) ---
+    if(!attendanceData.length){document.getElementById('groupDistSection').style.display='none';return;}
+    document.getElementById('groupDistSection').style.display='block';
+    var gdHtml='';
+    // 각 그룹의 basis 합계 (1인당 총 기준)
+    var groupBasisSum={};
+    Object.keys(tierConfig.groups).forEach(function(g){
+        groupBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;
+    });
+    Object.keys(tierConfig.groups).forEach(function(g){
+        var cfg=tierConfig.groups[g];
+        var staffPerDay=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g);});
+        gdHtml+='<p class="section-sub">'+g+'그룹 (근무: '+staffPerDay.map(function(s,i){return pdl[i].split('(')[1].replace(')','')+(s!==null?s:'?');}).join(' ')+')</p>';
+        gdHtml+='<div class="table-wrap"><table><thead><tr><th>계열</th>';
+        pdl.forEach(function(l){gdHtml+='<th class="num">'+l+'</th>';});
+        gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
+        var grpTotalPerDay=WEEK_ORDER.map(function(){return 0;});
+        cfg.tiers.forEach(function(ti,bi){
+            var basisRatio=cfg.basis[bi]/groupBasisSum[g]; // 이 그룹 내 계열 비율
+            var perPerson=WEEK_ORDER.map(function(_,di){
+                // 총 영어 근무인원
+                var totalStaff=0;
+                Object.keys(tierConfig.groups).forEach(function(g2){
+                    var s2=wd[di]?getWorkingStaffByGroupForDate(wd[di],g2):null;
+                    if(s2)totalStaff+=s2;
+                });
+                if(!totalStaff)return 0;
+                var myStaff=staffPerDay[di]||0;
+                if(!myStaff)return 0;
+                // 전체 DB를 전체 인원으로 균등 분배 → 1인당 총 DB
+                var dayTotal=engEffective[di]||0;
+                var perPersonTotal=Math.round(dayTotal/totalStaff);
+                // 그룹 내 계열 비율 적용
+                var pp=Math.round(perPersonTotal*basisRatio);
+                grpTotalPerDay[di]+=pp;
+                return pp;
+            });
+            gdHtml+='<tr><td>'+TIERS[ti]+'</td>'+perPerson.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num">'+perPerson.reduce(function(a,b){return a+b;},0)+'</td></tr>';
+        });
+        gdHtml+='<tr class="highlight-row"><td>합계</td>'+grpTotalPerDay.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+grpTotalPerDay.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+        gdHtml+='</tbody></table></div>';
+    });
+
+    // 제2외국어 1인 분배
+    var secStaff=wd.map(function(ds){return getWorkingSecStaffForDate(ds);});
+    gdHtml+='<p class="section-sub">제2외국어 (근무: '+secStaff.map(function(s,i){return pdl[i].split('(')[1].replace(')','')+(s!==null?s:'?');}).join(' ')+')</p>';
+    gdHtml+='<div class="table-wrap"><table><thead><tr><th>구분</th>';
+    pdl.forEach(function(l){gdHtml+='<th class="num">'+l+'</th>';});
+    gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
+        var ppVals=WEEK_ORDER.map(function(_,di){
+            var st=secStaff[di];if(!st)return 0;
+            var tierTotal=ti===0?secUpperVals[di]:secLowerVals[di];
+            return Math.round(tierTotal/st);
+        });
+        gdHtml+='<tr><td>'+tier+'</td>'+ppVals.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num">'+ppVals.reduce(function(a,b){return a+b;},0)+'</td></tr>';
+    });
+    var secPPTotal=WEEK_ORDER.map(function(_,di){var st=secStaff[di];return st?Math.round(secEffective[di]/st):0;});
+    gdHtml+='<tr class="highlight-row"><td>합계</td>'+secPPTotal.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+secPPTotal.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    gdHtml+='</tbody></table></div>';
+
+    // 톡이즈 1인 분배
+    var talkStaff=wd.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈');});
+    gdHtml+='<p class="section-sub">톡이즈 (근무: '+talkStaff.map(function(s,i){return pdl[i].split('(')[1].replace(')','')+(s!==null?s:'?');}).join(' ')+')</p>';
+    gdHtml+='<div class="table-wrap"><table><thead><tr><th>구분</th>';
+    pdl.forEach(function(l){gdHtml+='<th class="num">'+l+'</th>';});
+    gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    var talkPPVals=WEEK_ORDER.map(function(_,di){var st=talkStaff[di];return(st&&st>0)?Math.round(talkEffective[di]/st):0;});
+    gdHtml+='<tr class="highlight-row"><td>톡이즈 1인</td>'+talkPPVals.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+talkPPVals.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+    gdHtml+='</tbody></table></div>';
+
+    document.getElementById('groupDistTables').innerHTML=gdHtml;
+    // Store for Excel
+    lastPredData.tierDailyEng=tierDailyEng;lastPredData.engEffective=engEffective;lastPredData.secEffective=secEffective;lastPredData.secUpperVals=secUpperVals;lastPredData.secLowerVals=secLowerVals;lastPredData.talkEffective=talkEffective;
+}
+
+function applyCarryover(dailyVals){
+    var result=dailyVals.slice();
+    var carry=0;
+    for(var i=0;i<7;i++){
+        result[i]+=carry;
+        if(!workingDayToggle[i]){carry=result[i];result[i]=0;}
+        else carry=0;
+    }
+    return result;
+}
+
+// ======================== Excel Download ========================
+// ======================== Share Tab ========================
+function updateShareTab(){
+    if(!allData.length||!lastPredData.regularData)return;
+    var nw=getNextWeekRange(),rd=lastPredData.regularData,pdl=getPredDateLabels();
+    var startStr=formatDate(nw.start),endStr=formatDate(nw.end);
+    var startD=nw.start,endD=nw.end;
+
+    // KPI calculations
+    var engWeek=rd['영어'].reduce(function(a,b){return a+b;},0);
+    var secWeek=rd['제2외국어'].reduce(function(a,b){return a+b;},0);
+    var talkWeek=rd['톡이즈']?rd['톡이즈'].reduce(function(a,b){return a+b;},0):0;
+    var tbWeek=lastPredData.tbByDay.reduce(function(a,b){return a+b;},0);
+    var spWeek=lastPredData.spByDay.reduce(function(a,b){return a+b;},0);
+    var totalWeek=lastPredData.grandTotal;
+    var totalWeekday=WEEK_ORDER.slice(2,7).map(function(_,i){return lastPredData.totals[i+2];});
+    var totalWeekdayAvg=totalWeekday.length?Math.round(totalWeekday.reduce(function(a,b){return a+b;},0)/totalWeekday.length):0;
+
+    var tbTips2=buildScheduleTooltips('timeboard'),spTips2=buildScheduleTooltips('special');
+    var tbTips2Eng=buildScheduleTooltipsByDBType('timeboard','영어'),spTips2Eng=buildScheduleTooltipsByDBType('special','영어');
+    var tbTips2Sec=buildScheduleTooltipsByGroup('timeboard',SEC_LANG_TYPES),spTips2Sec=buildScheduleTooltipsByGroup('special',SEC_LANG_TYPES);
+    var tbTips2Talk=buildScheduleTooltipsByDBType('timeboard','톡이즈'),spTips2Talk=buildScheduleTooltipsByDBType('special','톡이즈');
+    function shareRow(label,vals,cls,tips){
+        var rt=vals.reduce(function(a,b){return a+b;},0);
+        return'<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td>'+vals.map(function(v,i){
+            if(tips&&tips[i]&&tips[i].length){return'<td class="has-tip">'+(v?v.toLocaleString():'-')+'<div class="tip-box">'+tips[i].join('<br>')+'</div></td>';}
+            return'<td>'+(v?v.toLocaleString():'-')+'</td>';
+        }).join('')+'<td>'+rt.toLocaleString()+'</td></tr>';
+    }
+
+    // ========== Helper: 공통 배너/KPI/퀵버튼 ==========
+    function buildBanner(){
+        var startDow=DAY_NAMES[nw.start.getDay()],endDow=DAY_NAMES[nw.end.getDay()];
+        var bh='<div class="share-banner">';
+        bh+='<div><h2>'+startStr+' ('+startDow+') ~ '+endStr+' ('+endDow+') DB 유입 예상</h2>';
+        bh+='<div class="date-badge">AI 추세 분석 기반 | 작성일 '+formatDate(new Date())+'</div></div>';
+        bh+='<div class="banner-logo"><img src="logo.png" alt="WM"></div>';
+        bh+='</div>';
+        return bh;
+    }
+    function buildKPIs(){
+        var kh='<div class="share-kpis">';
+        kh+='<div class="share-kpi accent-red"><div class="kpi-label">주간 총 예상</div><div class="kpi-value">'+totalWeek.toLocaleString()+'</div><div class="kpi-sub">전체 DB 합계</div></div>';
+        kh+='<div class="share-kpi"><div class="kpi-label">영어</div><div class="kpi-value">'+engWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+        kh+='<div class="share-kpi accent-green"><div class="kpi-label">제2외국어</div><div class="kpi-value">'+secWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+        kh+='<div class="share-kpi accent-purple"><div class="kpi-label">톡이즈</div><div class="kpi-value">'+talkWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+        kh+='<div class="share-kpi accent-teal"><div class="kpi-label">평일 일평균</div><div class="kpi-value">'+totalWeekdayAvg.toLocaleString()+'</div><div class="kpi-sub">월~금 평균</div></div>';
+        kh+='</div>';
+        return kh;
+    }
+    function buildQuickNav(prefix){
+        var qh='<div class="quick-nav">';
+        qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-daily\')">일별 종합 예상</div>';
+        if(schedules.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-schedule\')">타임보드/스페셜 집행계획</div>';
+        qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-media\')">매체별 예상 요약</div>';
+        if(attendanceData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-group\')">그룹별 1인 예상 분배 DB수</div>';
+        if(actualInflowData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-actual\')">실제 유입 분석</div>';
+        qh+='</div>';
+        return qh;
+    }
+
+    // ========== Helper: 시간표 빌더 ==========
+    function buildTimetable(){
+        var th='<div class="share-section" id="total-sec-schedule">';
+        th+='<h3>타임보드 / 스페셜 집행 계획</h3>';
+        th+='<div style="display:flex;gap:12px;margin-bottom:12px;font-size:0.78rem;color:#666;">';
+        th+='<span><span class="tt-tb" style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:2px 6px;border-radius:6px;font-size:0.7rem;font-weight:700;">TB</span> 타임보드</span>';
+        th+='<span><span class="tt-sp" style="display:inline-block;background:#e8f5e9;color:#2e7d32;padding:2px 6px;border-radius:6px;font-size:0.7rem;font-weight:700;">SP</span> 스페셜</span>';
+        th+='<span style="color:#e53935;">--- 5PM 컷오프</span></div>';
+        var grid={};
+        schedules.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=WEEK_ORDER.indexOf(s.day);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push({type:s.type,count:s.totalPredicted,breakdown:s.breakdown,dayType:s.dayType||''});});
+        th+='<table class="timetable"><thead><tr><th>시간</th>';pdl.forEach(function(l){th+='<th>'+l+'</th>';});th+='</tr></thead><tbody>';
+        for(var hr=0;hr<=23;hr++){var isCutoff=hr===DIST_CUTOFF_HOUR;th+='<tr'+(isCutoff?' class="tt-cutoff"':'')+'>';th+='<td class="hour-cell">'+formatHour(hr)+(isCutoff?' <span style="color:var(--red);font-size:0.65rem;">CUT</span>':'')+'</td>';
+            for(var di=0;di<7;di++){var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];if(!items.length){th+='<td class="tt-empty">-</td>';}else{var hasBoth=items.length>1;th+='<td'+(hasBoth?' class="tt-both"':'')+'>';items.forEach(function(it){var cls=it.type==='timeboard'?'tt-tb':'tt-sp';var label=it.type==='timeboard'?'TB':'SP';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)th+='<span class="'+cls+'">'+label+' '+dt+' '+v+'</span>';});}else{th+='<span class="'+cls+'">'+label+' '+it.count+'</span>';}});th+='</td>';}}th+='</tr>';}
+        th+='<tr style="font-weight:700;background:#f5f6fa;"><td class="hour-cell">합계</td>';
+        for(var di=0;di<7;di++){var dayTotal=0;schedules.forEach(function(s){if(WEEK_ORDER.indexOf(s.day)===di)dayTotal+=s.totalPredicted;});th+='<td>'+(dayTotal||'-')+'</td>';}
+        th+='</tr></tbody></table></div>';
+        return th;
+    }
+
+    // ========== Helper: 매체별 예상 요약 + 연령대별 유입량 ==========
+    function buildMediaSummary(items,prefix){
+        var mh='<div class="share-section" id="'+prefix+'sec-media">';
+        mh+='<h3>매체별 예상 요약</h3>';
+        items.forEach(function(item){
+            var tAll=item.d.length>1?getSmartMediaDOWTableForGroup(item.d):getSmartMediaDOWTable(item.d[0]);
+            if(!hasTableData(tAll))return;
+            mh+='<h4>'+item.t+'</h4>';
+            mh+='<table class="share-table"><thead><tr><th>매체</th>';pdl.forEach(function(l){mh+='<th>'+l+'</th>';});mh+='<th>합계</th></tr></thead><tbody>';
+            var totals=WEEK_ORDER.map(function(){return 0;});
+            MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=tAll[m][d];totals[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);if(rt>0)mh+=shareRow(m,vs);});
+            mh+=shareRow('합계',totals,'row-total');
+            mh+='</tbody></table>';
+        });
+        mh+='</div>';
+        // 연령대별 유입량 (별도 섹션)
+        var ageData=getAgeDailyTable();
+        var hasRealAge=AGE_GROUPS.some(function(ag){if(ag==='미상')return false;return ageData.dates.some(function(ds){return ageData.table[ag][ds]>0;});});
+        if(ageData.dates.length){
+            mh+='<div class="share-section">';
+            mh+='<h3>전주 연령대별 유입량</h3>';
+            if(!hasRealAge)mh+='<p style="font-size:0.78rem;color:#e65100;margin-bottom:8px;">연령대 데이터가 없습니다. DB수 파일을 삭제 후 다시 업로드하면 연령대가 반영됩니다.</p>';
+            mh+='<div style="overflow-x:auto;"><table class="age-table"><thead><tr><th>연령대</th>';
+            ageData.dates.forEach(function(ds){
+                var dd=new Date(ds+'T00:00:00');
+                var mm=dd.getMonth()+1,day=dd.getDate(),dow=DAY_NAMES[dd.getDay()];
+                mh+='<th>'+mm+'/'+day+'('+dow+')</th>';
+            });
+            mh+='<th>합계</th></tr></thead><tbody>';
+            var colTotals=ageData.dates.map(function(){return 0;});
+            AGE_GROUPS.forEach(function(ag){
+                var rowSum=0;var hasData=false;
+                var cells=ageData.dates.map(function(ds,ci){var v=ageData.table[ag][ds]||0;rowSum+=v;colTotals[ci]+=v;if(v>0)hasData=true;return v;});
+                if(!hasData)return;
+                mh+='<tr><td>'+ag+'</td>'+cells.map(function(v){return'<td>'+(v?v.toLocaleString():'-')+'</td>';}).join('')+'<td><strong>'+rowSum.toLocaleString()+'</strong></td></tr>';
+            });
+            var grandTotal=colTotals.reduce(function(a,b){return a+b;},0);
+            mh+='<tr class="row-total"><td>합계</td>'+colTotals.map(function(v){return'<td>'+v.toLocaleString()+'</td>';}).join('')+'<td><strong>'+grandTotal.toLocaleString()+'</strong></td></tr>';
+            mh+='</tbody></table></div>';
+            mh+='</div>';
+        }
+        return mh;
+    }
+
+    // ========== Helper: 그룹별 1인 분배 ==========
+    function buildGroupDist(prefix){
+        if(!attendanceData.length||!lastPredData.tierDailyEng)return'';
+        var gh='<div class="share-section" id="'+prefix+'sec-group">';
+        gh+='<h3>그룹별 1인 예상 분배 DB수</h3>';
+        var wd=getNextWeekDates();
+        gh+='<table class="share-table"><thead><tr><th>그룹</th><th>계열</th>';pdl.forEach(function(l){gh+='<th>'+l+'</th>';});gh+='<th>합계</th></tr></thead><tbody>';
+        var shareBasisSum={};Object.keys(tierConfig.groups).forEach(function(g){shareBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;});
+        Object.keys(tierConfig.groups).forEach(function(g){
+            var cfg=tierConfig.groups[g],staffPD=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;}),grpTotal=WEEK_ORDER.map(function(){return 0;}),isFirst=true;
+            cfg.tiers.forEach(function(ti,bi){
+                var basisRatio=cfg.basis[bi]/shareBasisSum[g];
+                var ppVals=WEEK_ORDER.map(function(_,di){var totalStaff=0;Object.keys(tierConfig.groups).forEach(function(g2){var s2=getWorkingStaffByGroupForDate(wd[di],g2)||0;totalStaff+=s2;});if(!totalStaff||!staffPD[di])return 0;var dayTotal=lastPredData.engEffective?lastPredData.engEffective[di]:0;var pp=Math.round(Math.round(dayTotal/totalStaff)*basisRatio);grpTotal[di]+=pp;return pp;});
+                gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'그룹</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+staffPD.filter(function(s){return s>0;}).join('/')+'명</span>':'')+'</td>';
+                gh+='<td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>'+ppVals.map(function(v){return'<td>'+(v||'-')+'</td>';}).join('')+'<td>'+ppVals.reduce(function(a,b){return a+b;},0)+'</td></tr>';isFirst=false;
+            });
+            gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td>'+grpTotal.map(function(v){return'<td style="color:#1a237e;">'+v+'</td>';}).join('')+'<td style="color:#1a237e;"><strong>'+grpTotal.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+        });
+        gh+='</tbody></table>';
+        // 제2외국어
+        var secStaff=wd.map(function(ds){return getWorkingSecStaffForDate(ds)||0;});
+        var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
+        var secU=lastPredData.secUpperVals||WEEK_ORDER.map(function(){return 0;}),secL=lastPredData.secLowerVals||WEEK_ORDER.map(function(){return 0;});
+        gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th>';pdl.forEach(function(l){gh+='<th>'+l+'</th>';});gh+='<th>합계</th></tr></thead><tbody>';
+        var secFirst=true;
+        ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
+            var vals=(ti===0?secU:secL);var ppVals=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(vals[di]/secStaff[di]):0;});
+            gh+='<tr><td>'+(secFirst?'<strong style="color:#2e7d32;">제2외국어</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+secStaff.filter(function(s){return s>0;}).join('/')+'명</span>':'')+'</td>';
+            gh+='<td style="color:#666;font-size:0.82rem;">'+tier+'</td>'+ppVals.map(function(v){return'<td>'+(v||'-')+'</td>';}).join('')+'<td>'+ppVals.reduce(function(a,b){return a+b;},0)+'</td></tr>';secFirst=false;
+        });
+        var secPPT=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(secEff[di]/secStaff[di]):0;});
+        gh+='<tr style="background:#e8f5e9;font-weight:700;"><td></td><td style="color:#2e7d32;">합계</td>'+secPPT.map(function(v){return'<td style="color:#2e7d32;">'+v+'</td>';}).join('')+'<td style="color:#2e7d32;"><strong>'+secPPT.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
+        gh+='</tbody></table>';
+        // 톡이즈
+        var talkStaff2=wd.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈')||0;});
+        var talkEff=lastPredData.talkEffective||WEEK_ORDER.map(function(){return 0;});
+        gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th>';pdl.forEach(function(l){gh+='<th>'+l+'</th>';});gh+='<th>합계</th></tr></thead><tbody>';
+        var talkPP=WEEK_ORDER.map(function(_,di){return(talkStaff2[di]&&talkStaff2[di]>0)?Math.round(talkEff[di]/talkStaff2[di]):0;});
+        gh+='<tr><td><strong style="color:#7b1fa2;">톡이즈</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+talkStaff2.filter(function(s){return s>0;}).join('/')+'명</span></td>';
+        gh+='<td style="color:#666;font-size:0.82rem;">1인 분배</td>'+talkPP.map(function(v){return'<td>'+(v||'-')+'</td>';}).join('')+'<td>'+talkPP.reduce(function(a,b){return a+b;},0)+'</td></tr>';
+        gh+='</tbody></table></div>';
+        return gh;
+    }
+
+    // ========== Helper: 실제 유입 분석 섹션 ==========
+    function buildActualInflowSection(prefix){
+        if(!actualInflowData.length)return'';
+        var acS=getActualInflowSummary();
+        var ah='<div class="share-section" id="'+prefix+'sec-actual">';
+        ah+='<h3>실제 유입 분석</h3>';
+        // 언어별 수량
+        ah+='<h4>언어별 수량</h4>';
+        ah+='<table class="share-table"><thead><tr><th>구분</th><th>수량</th><th>비율</th></tr></thead><tbody>';
+        ['영어','제2외국어','톡이즈'].forEach(function(lang){
+            var cnt=acS.byLang[lang];var pct=acS.total?(cnt/acS.total*100).toFixed(1):'0';
+            ah+='<tr><td>'+lang+'</td><td>'+cnt+'</td><td>'+pct+'%</td></tr>';
+        });
+        ah+='<tr class="row-total"><td>합계</td><td>'+acS.total+'</td><td>100%</td></tr>';
+        ah+='</tbody></table>';
+        // 매체별 수량
+        ah+='<h4>매체별 수량</h4>';
+        ah+='<table class="share-table"><thead><tr><th>매체</th><th>영어</th><th>제2외국어</th><th>톡이즈</th><th>합계</th></tr></thead><tbody>';
+        var allMedias=Object.keys(acS.byMedia).sort(function(a,b){return acS.byMedia[b]-acS.byMedia[a];});
+        allMedias.forEach(function(m){
+            var e=acS.byLangMedia['영어'][m]||0;
+            var s=acS.byLangMedia['제2외국어'][m]||0;
+            var t=acS.byLangMedia['톡이즈'][m]||0;
+            ah+='<tr><td>'+m+'</td><td>'+e+'</td><td>'+s+'</td><td>'+t+'</td><td><strong>'+acS.byMedia[m]+'</strong></td></tr>';
+        });
+        ah+='<tr class="row-total"><td>합계</td><td>'+acS.byLang['영어']+'</td><td>'+acS.byLang['제2외국어']+'</td><td>'+acS.byLang['톡이즈']+'</td><td><strong>'+acS.total+'</strong></td></tr>';
+        ah+='</tbody></table>';
+        // 1인당 분배 가능 수량 (근태 기반)
+        if(attendanceData.length){
+            ah+='<h4>1인당 실제 유입 분배 가능 수량</h4>';
+            ah+='<table class="share-table"><thead><tr><th>구분</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            var wd=getNextWeekDates();
+            // 오늘 날짜 기준 근무인원
+            var todayStr=formatDate(new Date());
+            ['영어','제2외국어','톡이즈'].forEach(function(cat){
+                var langKey=cat;
+                var cnt=acS.byLang[langKey]||0;
+                var staff=getWorkingStaffForDate(todayStr,cat);
+                var pp=(staff&&staff>0)?Math.round(cnt/staff):'-';
+                ah+='<tr><td>'+cat+'</td><td>'+cnt+'</td><td>'+(staff||'-')+'</td><td><strong>'+pp+'</strong></td></tr>';
+            });
+            ah+='</tbody></table>';
+        }
+        ah+='</div>';
+        return ah;
+    }
+
+    // ========== Helper: 계열별 예상 유입 ==========
+    function buildTierSection(){
+        if(!lastPredData.tierDailyEng)return'';
+        var th='<div class="share-section">';
+        th+='<h3>계열별 예상 유입 수량</h3>';
+        // 영어
+        th+='<h4>영어</h4>';
+        th+='<table class="share-table"><thead><tr><th>계열</th><th>비중</th>';pdl.forEach(function(l){th+='<th>'+l+'</th>';});th+='<th>합계</th></tr></thead><tbody>';
+        var wSum=tierConfig.weights.reduce(function(a,b){return a+b;},0)||1;
+        TIERS.forEach(function(t,i){var vs=lastPredData.tierDailyEng[i];var w=tierConfig.weights[i];th+='<tr><td>'+t+'</td><td>'+w.toFixed(1)+'%</td>'+vs.map(function(v){return'<td>'+(v?v.toLocaleString():'-')+'</td>';}).join('')+'<td>'+vs.reduce(function(a,b){return a+b;},0).toLocaleString()+'</td></tr>';});
+        var engEff=lastPredData.engEffective;
+        th+='<tr class="row-total"><td>합계</td><td>100%</td>'+engEff.map(function(v){return'<td>'+v.toLocaleString()+'</td>';}).join('')+'<td>'+engEff.reduce(function(a,b){return a+b;},0).toLocaleString()+'</td></tr>';
+        th+='</tbody></table>';
+        // 제2외국어
+        var _secUP=46,_secLP=54;
+        var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
+        var _secUV=secEff.map(function(v){return Math.round(v*_secUP/100);});
+        var _secLV=secEff.map(function(v){return Math.round(v*_secLP/100);});
+        th+='<h4>제2외국어</h4>';
+        th+='<table class="share-table"><thead><tr><th>구분</th><th>비중</th>';pdl.forEach(function(l){th+='<th>'+l+'</th>';});th+='<th>합계</th></tr></thead><tbody>';
+        th+='<tr><td>상위 (0~2계열)</td><td>'+_secUP+'%</td>'+_secUV.map(function(v){return'<td>'+(v?v.toLocaleString():'-')+'</td>';}).join('')+'<td>'+_secUV.reduce(function(a,b){return a+b;},0).toLocaleString()+'</td></tr>';
+        th+='<tr><td>하위 (3~5계열)</td><td>'+_secLP+'%</td>'+_secLV.map(function(v){return'<td>'+(v?v.toLocaleString():'-')+'</td>';}).join('')+'<td>'+_secLV.reduce(function(a,b){return a+b;},0).toLocaleString()+'</td></tr>';
+        th+='<tr class="row-total"><td>합계</td><td>100%</td>'+secEff.map(function(v){return'<td>'+v.toLocaleString()+'</td>';}).join('')+'<td>'+secEff.reduce(function(a,b){return a+b;},0).toLocaleString()+'</td></tr>';
+        th+='</tbody></table>';
+        th+='</div>';
+        return th;
+    }
+
+    // =====================================================
+    // ========== 종합 탭 ==========
+    // =====================================================
+    var h='';
+    h+=buildBanner();
+    h+=buildKPIs();
+    h+=buildQuickNav('total-');
+
+    // 일별 종합 예상
+    h+='<div class="share-section" id="total-sec-daily">';
+    h+='<h3>일별 종합 예상</h3>';
+    h+='<div class="share-chart-grid">';
+    h+='<div class="share-chart-box"><h4>일별 유입 예상 (Stacked)</h4><canvas id="shareStackChart"></canvas></div>';
+    h+='<div class="share-chart-box"><h4>DB 종류별 비중</h4><canvas id="sharePieChart"></canvas></div></div>';
+    h+='<table class="share-table"><thead><tr><th>구분</th>';pdl.forEach(function(l){h+='<th>'+l+'</th>';});h+='<th>합계</th></tr></thead><tbody>';
+    var _tbG=lastPredData.tbByGroup||{},_spG=lastPredData.spByGroup||{},_tbT=lastPredData.tbByType||{},_spT=lastPredData.spByType||{};
+    function _addA(a,b){return a.map(function(v,i){return v+(b[i]||0);});}
+    function _z7(){return WEEK_ORDER.map(function(){return 0;});}
+    // 영어
+    var _engTot=_addA(_addA(rd['영어'],_tbG['영어']||_z7()),_spG['영어']||_z7());
+    h+=shareRow('영어 합계',_engTot,'row-total');
+    h+=shareRow('&nbsp;&nbsp;영어 일반',rd['영어'],'row-sub');
+    h+=shareRow('&nbsp;&nbsp;영어 타임보드',_tbG['영어']||_z7(),'row-sub',tbTips2Eng);
+    h+=shareRow('&nbsp;&nbsp;영어 스페셜',_spG['영어']||_z7(),'row-sub',spTips2Eng);
+    // 제2외국어
+    var _secTot=_addA(_addA(rd['제2외국어'],_tbG['제2외국어']||_z7()),_spG['제2외국어']||_z7());
+    h+=shareRow('제2외국어 합계',_secTot,'row-total');
+    h+=shareRow('&nbsp;&nbsp;제2외국어 일반',rd['제2외국어'],'row-sub');
+    h+=shareRow('&nbsp;&nbsp;제2외국어 타임보드',_tbG['제2외국어']||_z7(),'row-sub',tbTips2Sec);
+    h+=shareRow('&nbsp;&nbsp;제2외국어 스페셜',_spG['제2외국어']||_z7(),'row-sub',spTips2Sec);
+    SEC_LANG_TYPES.forEach(function(dt){
+        var _dtTb=_tbT[dt]||_z7(),_dtSp=_spT[dt]||_z7();
+        var _dtTot=_addA(_addA(rd[dt],_dtTb),_dtSp);
+        var _dtTbTips=buildScheduleTooltipsByDBType('timeboard',dt),_dtSpTips=buildScheduleTooltipsByDBType('special',dt);
+        h+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;'+dt+' 합계',_dtTot,'row-highlight');
+        h+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;일반',rd[dt],'row-sub');
+        if(_dtTb.reduce(function(a,b){return a+b;},0)>0)h+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;타임보드',_dtTb,'row-sub',_dtTbTips);
+        if(_dtSp.reduce(function(a,b){return a+b;},0)>0)h+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;스페셜',_dtSp,'row-sub',_dtSpTips);
+    });
+    // 톡이즈
+    var _talkTot=_addA(_addA(rd['톡이즈'],_tbG['톡이즈']||_z7()),_spG['톡이즈']||_z7());
+    h+=shareRow('톡이즈 합계',_talkTot,'row-total');
+    h+=shareRow('&nbsp;&nbsp;톡이즈 일반',rd['톡이즈'],'row-sub');
+    h+=shareRow('&nbsp;&nbsp;톡이즈 타임보드',_tbG['톡이즈']||_z7(),'row-sub',tbTips2Talk);
+    h+=shareRow('&nbsp;&nbsp;톡이즈 스페셜',_spG['톡이즈']||_z7(),'row-sub',spTips2Talk);
+    // 총 합계
+    h+=shareRow('총 합계',lastPredData.totals,'row-total');
+    h+='</tbody></table></div>';
+
+    // 타임보드/스페셜 시간표
+    if(schedules.length)h+=buildTimetable();
+
+    // 매체별 예상 요약 + 연령대
+    h+=buildMediaSummary([{t:'영어',d:['영어']},{t:'제2외국어',d:SEC_LANG_TYPES},{t:'톡이즈',d:['톡이즈']}],'total-');
+
+    // 실제 유입 분석
+    h+=buildActualInflowSection('total-');
+
+    // 그룹별 1인 분배
+    h+=buildGroupDist('total-');
+
+    // 계열별 예상 유입
+    h+=buildTierSection();
+
+    h+='<div class="share-footer">Generated by WM DB 유입 예상 대시보드 | AI 추세 분석 기반 예측</div>';
+    document.getElementById('shareBody').innerHTML=h;
+
+    // =====================================================
+    // ========== 영어+제2외국어 탭 ==========
+    // =====================================================
+    var bh='';
+    bh+=buildBanner();
+    // 영어+제2외 KPI
+    bh+='<div class="share-kpis">';
+    bh+='<div class="share-kpi"><div class="kpi-label">영어</div><div class="kpi-value">'+engWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+    bh+='<div class="share-kpi accent-green"><div class="kpi-label">제2외국어</div><div class="kpi-value">'+secWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+    var brainTotal=engWeek+secWeek;
+    bh+='<div class="share-kpi accent-red"><div class="kpi-label">영어+제2외 합계</div><div class="kpi-value">'+brainTotal.toLocaleString()+'</div><div class="kpi-sub">영어+제2외국어</div></div>';
+    bh+='</div>';
+    bh+=buildQuickNav('brain-');
+
+    // 일별 영어+제2외 예상
+    bh+='<div class="share-section" id="brain-sec-daily">';
+    bh+='<h3>일별 영어+제2외 예상</h3>';
+    bh+='<div class="share-chart-grid">';
+    bh+='<div class="share-chart-box"><h4>일별 유입 예상</h4><canvas id="shareBrainStackChart"></canvas></div>';
+    bh+='<div class="share-chart-box"><h4>영어 vs 제2외국어</h4><canvas id="shareBrainPieChart"></canvas></div></div>';
+    bh+='<table class="share-table"><thead><tr><th>구분</th>';pdl.forEach(function(l){bh+='<th>'+l+'</th>';});bh+='<th>합계</th></tr></thead><tbody>';
+    // 영어 상세
+    var _bTbG=lastPredData.tbByGroup||{},_bSpG=lastPredData.spByGroup||{},_bTbT=lastPredData.tbByType||{},_bSpT=lastPredData.spByType||{};
+    var _bEngTot=_addA(_addA(rd['영어'],_bTbG['영어']||_z7()),_bSpG['영어']||_z7());
+    bh+=shareRow('영어 합계',_bEngTot,'row-total');
+    bh+=shareRow('&nbsp;&nbsp;영어 일반',rd['영어'],'row-sub');
+    if((_bTbG['영어']||_z7()).reduce(function(a,b){return a+b;},0)>0)bh+=shareRow('&nbsp;&nbsp;영어 타임보드',_bTbG['영어'],'row-sub',buildScheduleTooltipsByDBType('timeboard','영어'));
+    if((_bSpG['영어']||_z7()).reduce(function(a,b){return a+b;},0)>0)bh+=shareRow('&nbsp;&nbsp;영어 스페셜',_bSpG['영어'],'row-sub',buildScheduleTooltipsByDBType('special','영어'));
+    // 제2외국어 상세
+    var _bSecTot=_addA(_addA(rd['제2외국어'],_bTbG['제2외국어']||_z7()),_bSpG['제2외국어']||_z7());
+    bh+=shareRow('제2외국어 합계',_bSecTot,'row-total');
+    bh+=shareRow('&nbsp;&nbsp;제2외국어 일반',rd['제2외국어'],'row-sub');
+    if((_bTbG['제2외국어']||_z7()).reduce(function(a,b){return a+b;},0)>0)bh+=shareRow('&nbsp;&nbsp;제2외국어 타임보드',_bTbG['제2외국어'],'row-sub',buildScheduleTooltipsByGroup('timeboard',SEC_LANG_TYPES));
+    if((_bSpG['제2외국어']||_z7()).reduce(function(a,b){return a+b;},0)>0)bh+=shareRow('&nbsp;&nbsp;제2외국어 스페셜',_bSpG['제2외국어'],'row-sub',buildScheduleTooltipsByGroup('special',SEC_LANG_TYPES));
+    SEC_LANG_TYPES.forEach(function(dt){
+        var _dtTb=_bTbT[dt]||_z7(),_dtSp=_bSpT[dt]||_z7();
+        var _dtTot=_addA(_addA(rd[dt],_dtTb),_dtSp);
+        bh+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;'+dt+' 합계',_dtTot,'row-highlight');
+        bh+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;일반',rd[dt],'row-sub');
+        if(_dtTb.reduce(function(a,b){return a+b;},0)>0)bh+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;타임보드',_dtTb,'row-sub',buildScheduleTooltipsByDBType('timeboard',dt));
+        if(_dtSp.reduce(function(a,b){return a+b;},0)>0)bh+=shareRow('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;스페셜',_dtSp,'row-sub',buildScheduleTooltipsByDBType('special',dt));
+    });
+    var brainTotals=WEEK_ORDER.map(function(_,i){return _bEngTot[i]+_bSecTot[i];});
+    bh+=shareRow('총 합계',brainTotals,'row-total');
+    bh+='</tbody></table></div>';
+
+    if(schedules.length)bh+=buildTimetable().replace('id="total-sec-schedule"','id="brain-sec-schedule"');
+    bh+=buildMediaSummary([{t:'영어',d:['영어']},{t:'제2외국어',d:SEC_LANG_TYPES}],'brain-');
+    bh+=buildActualInflowSection('brain-');
+    bh+=buildGroupDist('brain-');
+    bh+=buildTierSection();
+    bh+='<div class="share-footer">Generated by WM DB 유입 예상 대시보드 | 영어 + 제2외국어</div>';
+    document.getElementById('shareBodyBrain').innerHTML=bh;
+
+    // =====================================================
+    // ========== 톡이즈 탭 ==========
+    // =====================================================
+    var tkh='';
+    tkh+=buildBanner();
+    tkh+='<div class="share-kpis">';
+    tkh+='<div class="share-kpi accent-purple"><div class="kpi-label">톡이즈 주간</div><div class="kpi-value">'+talkWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+    var talkWeekdayVals=rd['톡이즈']?rd['톡이즈'].slice(2,7):[];
+    var talkWeekdayAvg=talkWeekdayVals.length?Math.round(talkWeekdayVals.reduce(function(a,b){return a+b;},0)/talkWeekdayVals.length):0;
+    tkh+='<div class="share-kpi accent-teal"><div class="kpi-label">평일 일평균</div><div class="kpi-value">'+talkWeekdayAvg+'</div><div class="kpi-sub">월~금 평균</div></div>';
+    tkh+='</div>';
+    tkh+=buildQuickNav('talkiz-');
+
+    // 일별 톡이즈 예상
+    tkh+='<div class="share-section" id="talkiz-sec-daily">';
+    tkh+='<h3>일별 톡이즈 예상</h3>';
+    tkh+='<div class="share-chart-grid">';
+    tkh+='<div class="share-chart-box"><h4>일별 유입 예상</h4><canvas id="shareTalkizChart"></canvas></div>';
+    tkh+='<div class="share-chart-box"><h4>매체 비중</h4><canvas id="shareTalkizPieChart"></canvas></div></div>';
+    tkh+='<table class="share-table"><thead><tr><th>구분</th>';pdl.forEach(function(l){tkh+='<th>'+l+'</th>';});tkh+='<th>합계</th></tr></thead><tbody>';
+    var _tTbG=lastPredData.tbByGroup||{},_tSpG=lastPredData.spByGroup||{};
+    var _tTalkTot=_addA(_addA(rd['톡이즈']||_z7(),_tTbG['톡이즈']||_z7()),_tSpG['톡이즈']||_z7());
+    tkh+=shareRow('톡이즈 합계',_tTalkTot,'row-total');
+    tkh+=shareRow('&nbsp;&nbsp;톡이즈 일반',rd['톡이즈']||_z7(),'row-sub');
+    if((_tTbG['톡이즈']||_z7()).reduce(function(a,b){return a+b;},0)>0)tkh+=shareRow('&nbsp;&nbsp;톡이즈 타임보드',_tTbG['톡이즈'],'row-sub',buildScheduleTooltipsByDBType('timeboard','톡이즈'));
+    if((_tSpG['톡이즈']||_z7()).reduce(function(a,b){return a+b;},0)>0)tkh+=shareRow('&nbsp;&nbsp;톡이즈 스페셜',_tSpG['톡이즈'],'row-sub',buildScheduleTooltipsByDBType('special','톡이즈'));
+    tkh+='</tbody></table></div>';
+
+    tkh+=buildMediaSummary([{t:'톡이즈',d:['톡이즈']}],'talkiz-');
+    // 톡이즈 1인 분배
+    if(attendanceData.length&&lastPredData.talkEffective){
+        var wd3=getNextWeekDates();
+        var tkStaff=wd3.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈')||0;});
+        var tkEff=lastPredData.talkEffective;
+        tkh+='<div class="share-section" id="talkiz-sec-group">';
+        tkh+='<h3>톡이즈 1인 예상 분배 DB수</h3>';
+        tkh+='<table class="share-table"><thead><tr><th>구분</th>';pdl.forEach(function(l){tkh+='<th>'+l+'</th>';});tkh+='<th>합계</th></tr></thead><tbody>';
+        tkh+=shareRow('톡이즈 총량',tkEff);
+        var tkPP=WEEK_ORDER.map(function(_,di){return(tkStaff[di]&&tkStaff[di]>0)?Math.round(tkEff[di]/tkStaff[di]):0;});
+        tkh+='<tr><td>근무 인원</td>'+tkStaff.map(function(s){return'<td>'+(s||'-')+'</td>';}).join('')+'<td>-</td></tr>';
+        tkh+='<tr class="row-total"><td>1인 분배</td>'+tkPP.map(function(v){return'<td>'+(v||'-')+'</td>';}).join('')+'<td>-</td></tr>';
+        tkh+='</tbody></table></div>';
+    }
+    tkh+=buildActualInflowSection('talkiz-');
+    tkh+='<div class="share-footer">Generated by WM DB 유입 예상 대시보드 | 톡이즈</div>';
+    document.getElementById('shareBodyTalkiz').innerHTML=tkh;
+
+    // Render share charts
+    renderShareCharts();
+}
+
+function renderShareCharts(){
+    if(!lastPredData.regularData)return;
+    var rd=lastPredData.regularData,pdl=getPredDateLabels();
+    var stackOpts={scales:{x:{stacked:true},y:{stacked:true}},plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}};
+    var pieOpts={plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}};
+
+    // ===== 종합 탭 차트 =====
+    renderChart('shareStackChart','bar',{
+        labels:pdl,
+        datasets:[
+            {label:'영어',data:rd['영어'],backgroundColor:COLORS['영어']},
+            {label:'제2외국어',data:rd['제2외국어'],backgroundColor:COLORS['제2외국어']},
+            {label:'톡이즈',data:rd['톡이즈']||WEEK_ORDER.map(function(){return 0;}),backgroundColor:COLORS['톡이즈']},
+            {label:'타임보드',data:lastPredData.tbByDay,backgroundColor:COLORS['타임보드']},
+            {label:'스페셜',data:lastPredData.spByDay,backgroundColor:COLORS['스페셜']}
+        ]
+    },stackOpts);
+
+    var engT=rd['영어'].reduce(function(a,b){return a+b;},0);
+    var secT=rd['제2외국어'].reduce(function(a,b){return a+b;},0);
+    var talkT=(rd['톡이즈']||[]).reduce(function(a,b){return a+b;},0);
+    var tbT=lastPredData.tbByDay.reduce(function(a,b){return a+b;},0);
+    var spT=lastPredData.spByDay.reduce(function(a,b){return a+b;},0);
+    var pieData=[engT,secT,talkT,tbT,spT].filter(function(v){return v>0;});
+    var pieLabels=['영어','제2외국어','톡이즈','타임보드','스페셜'].filter(function(_,i){return[engT,secT,talkT,tbT,spT][i]>0;});
+    var pieColors=[COLORS['영어'],COLORS['제2외국어'],COLORS['톡이즈'],COLORS['타임보드'],COLORS['스페셜']].filter(function(_,i){return[engT,secT,talkT,tbT,spT][i]>0;});
+    renderChart('sharePieChart','doughnut',{labels:pieLabels,datasets:[{data:pieData,backgroundColor:pieColors}]},pieOpts);
+
+    // ===== 영어+제2외 탭 차트 =====
+    if(document.getElementById('shareBrainStackChart')){
+        renderChart('shareBrainStackChart','bar',{
+            labels:pdl,
+            datasets:[
+                {label:'영어',data:rd['영어'],backgroundColor:COLORS['영어']},
+                {label:'제2외국어',data:rd['제2외국어'],backgroundColor:COLORS['제2외국어']}
+            ]
+        },stackOpts);
+        renderChart('shareBrainPieChart','doughnut',{
+            labels:['영어','제2외국어'].filter(function(_,i){return[engT,secT][i]>0;}),
+            datasets:[{data:[engT,secT].filter(function(v){return v>0;}),backgroundColor:[COLORS['영어'],COLORS['제2외국어']].filter(function(_,i){return[engT,secT][i]>0;})}]
+        },pieOpts);
+    }
+
+    // ===== 톡이즈 탭 차트 =====
+    if(document.getElementById('shareTalkizChart')){
+        renderChart('shareTalkizChart','bar',{
+            labels:pdl,
+            datasets:[{label:'톡이즈',data:rd['톡이즈']||WEEK_ORDER.map(function(){return 0;}),backgroundColor:COLORS['톡이즈']}]
+        },{plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}});
+        // 톡이즈 매체 파이 차트
+        var talkMedia=getSmartMediaDOWTable('톡이즈');
+        var tmLabels=[],tmData=[],tmColors=[];
+        MEDIA_TYPES.forEach(function(m){
+            var total=WEEK_ORDER.reduce(function(s,d){return s+talkMedia[m][d];},0);
+            if(total>0){tmLabels.push(m);tmData.push(total);tmColors.push(MEDIA_COLORS[m]);}
+        });
+        if(tmData.length)renderChart('shareTalkizPieChart','doughnut',{labels:tmLabels,datasets:[{data:tmData,backgroundColor:tmColors}]},pieOpts);
+    }
+}
+
+function downloadPredExcel(){
+    var wb=XLSX.utils.book_new(),nw=getNextWeekRange(),pdl=getPredDateLabels();
+    var wl=formatDate(nw.start)+' ~ '+formatDate(nw.end);
+    var hdr=['매체'].concat(pdl).concat(['합계']);
+
+    // Sheet 1: 차주 매체별 예상
+    var pr=[];
+    [{t:'영어',d:'영어'},{t:'제2외국어',d:SEC_LANG_TYPES},{t:'일본어',d:'일본어'},{t:'중국어',d:'중국어'},{t:'스페인어',d:'스페인어'},{t:'프랑스어',d:'프랑스어'},{t:'톡이즈',d:'톡이즈'}].forEach(function(item){
+        var dts=Array.isArray(item.d)?item.d:[item.d];
+        var tAM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오전'):getSmartMediaDOWTableByPeriod(dts[0],'오전');
+        var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
+        var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
+        if(!hasTableData(tAll))return;
+        pr.push([item.t+' - 차주 매체별 예상']);pr.push(hdr);
+        var am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
+        MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=tAM[m][d];am[i]+=v;return v;});if(vs.reduce(function(a,b){return a+b;},0)>0)pr.push([m].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
+        pr.push(['오전 합계'].concat(am).concat([am.reduce(function(a,b){return a+b;},0)]));
+        MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){pm[i]+=tPM[m][d];});});
+        pr.push(['오후 추가'].concat(pm).concat([pm.reduce(function(a,b){return a+b;},0)]));
+        var tv=WEEK_ORDER.map(function(_,i){return am[i]+pm[i];});
+        pr.push(['총 합계'].concat(tv).concat([tv.reduce(function(a,b){return a+b;},0)]));pr.push([]);
+    });
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pr),'차주 매체별 예상');
+
+    // Sheet 2: 차주 종합 예상 (carryover 반영된 데이터)
+    var dhdr=['구분'].concat(pdl).concat(['합계']);
+    var tr=[['차주 종합 예상 ('+wl+')'],dhdr];
+    if(lastPredData.regularData){var rd=lastPredData.regularData;
+        ['영어','제2외국어','톡이즈'].forEach(function(c){tr.push([c].concat(rd[c]).concat([rd[c].reduce(function(a,b){return a+b;},0)]));});
+        SEC_LANG_TYPES.forEach(function(dt){tr.push(['  '+dt].concat(rd[dt]).concat([rd[dt].reduce(function(a,b){return a+b;},0)]));});
+        tr.push(['타임보드'].concat(lastPredData.tbByDay).concat([lastPredData.tbByDay.reduce(function(a,b){return a+b;},0)]));
+        tr.push(['스페셜'].concat(lastPredData.spByDay).concat([lastPredData.spByDay.reduce(function(a,b){return a+b;},0)]));
+        tr.push(['합계'].concat(lastPredData.totals).concat([lastPredData.grandTotal]));
+        // 1인 분배
+        if(attendanceData.length){
+            tr.push([]);tr.push(['1인 분배 예상 (근태 기반)']);
+            var wd=getNextWeekDates();
+            ['영어','제2외국어','톡이즈'].forEach(function(cat){
+                var cr=rd[cat],cs=lastPredData.schedByCategory[cat];
+                var staffs=WEEK_ORDER.map(function(d,i){return getWorkingStaffForDate(wd[i],cat);});
+                var pp=WEEK_ORDER.map(function(d,i){var t=cr[i]+cs[i],s=staffs[i];return(s===null||s===0)?'-':Math.round(t/s);});
+                tr.push([cat+' 1인'].concat(pp).concat(['-']));
+                tr.push([cat+' 근무인원'].concat(staffs.map(function(s){return s!==null?s:'-';})).concat(['-']));
+            });
+        }
+    }
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tr),'차주 종합 예상');
+
+    // Sheet 3: 타임보드/스페셜 집행 계획
+    if(schedules.length){
+        var sr=[['타임보드/스페셜 집행 계획'],['유형','요일','시간','비중','예상 DB수','주말/평일','분배일']];
+        schedules.forEach(function(s){
+            var typeName=s.type==='timeboard'?'타임보드':'스페셜';
+            var pp=[];DB_TYPES.forEach(function(dt){if(s.pcts&&s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');});
+            var dayIdx=WEEK_ORDER.indexOf(s.day);var dayLabel=dayIdx>=0?pdl[dayIdx]:DAY_NAMES[s.day];
+            var dd=getScheduleDistDay(s),distIdx=WEEK_ORDER.indexOf(dd);
+            var distLabel=distIdx>=0?pdl[distIdx]:DAY_NAMES[dd];
+            if(dd!==s.day)distLabel+=' (이월)';
+            sr.push([typeName,dayLabel,formatHour(s.hour),pp.join(' / '),s.totalPredicted,s.dayType||'',distLabel]);
+        });
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sr),'집행 계획');
+    }
+
+    // Sheet 4: 계열별 예상 유입
+    if(lastPredData.tierDailyEng){
+        var ti=[['계열별 예상 유입 수량 ('+wl+')'],['계열','비중'].concat(pdl).concat(['합계'])];
+        TIERS.forEach(function(t,i){var vs=lastPredData.tierDailyEng[i];ti.push([t,tierConfig.weights[i]+'%'].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
+        ti.push(['영어 합계',''].concat(lastPredData.engEffective).concat([lastPredData.engEffective.reduce(function(a,b){return a+b;},0)]));
+        ti.push([]);ti.push(['제2외국어']);
+        ti.push(['상위',''].concat(lastPredData.secUpperVals).concat([lastPredData.secUpperVals.reduce(function(a,b){return a+b;},0)]));
+        ti.push(['하위',''].concat(lastPredData.secLowerVals).concat([lastPredData.secLowerVals.reduce(function(a,b){return a+b;},0)]));
+        ti.push(['제2외 합계',''].concat(lastPredData.secEffective).concat([lastPredData.secEffective.reduce(function(a,b){return a+b;},0)]));
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ti),'계열별 예상 유입');
+    }
+
+    // Sheet 5: 그룹별 1인 분배
+    if(attendanceData.length&&lastPredData.tierDailyEng){
+        var gi=[['그룹별 1인 예상 분배 DB수 ('+wl+')']];
+        var wd2=getNextWeekDates();
+        var xlBasisSum={};
+        Object.keys(tierConfig.groups).forEach(function(g){xlBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;});
+        Object.keys(tierConfig.groups).forEach(function(g){
+            var cfg=tierConfig.groups[g];
+            var staffPD=wd2.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;});
+            gi.push([]);gi.push([g+'그룹','근무인원'].concat(staffPD));
+            gi.push(['계열'].concat(pdl).concat(['합계']));
+            var grpTotal=WEEK_ORDER.map(function(){return 0;});
+            cfg.tiers.forEach(function(tidx,bi){
+                var basisRatio=cfg.basis[bi]/xlBasisSum[g];
+                var ppVals=WEEK_ORDER.map(function(_,di){
+                    var totalStaff=0;Object.keys(tierConfig.groups).forEach(function(g2){var s2=getWorkingStaffByGroupForDate(wd2[di],g2)||0;totalStaff+=s2;});
+                    if(!totalStaff||!staffPD[di])return 0;
+                    var dayTotal=lastPredData.engEffective?lastPredData.engEffective[di]:0;
+                    var pp=Math.round(Math.round(dayTotal/totalStaff)*basisRatio);
+                    grpTotal[di]+=pp;return pp;
+                });
+                gi.push([TIERS[tidx]].concat(ppVals).concat([ppVals.reduce(function(a,b){return a+b;},0)]));
+            });
+            gi.push(['합계'].concat(grpTotal).concat([grpTotal.reduce(function(a,b){return a+b;},0)]));
+        });
+        // 제2외국어
+        var secStaff=wd2.map(function(ds){return getWorkingSecStaffForDate(ds)||0;});
+        gi.push([]);gi.push(['제2외국어','근무인원'].concat(secStaff));
+        gi.push(['구분'].concat(pdl).concat(['합계']));
+        var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
+        var secU=lastPredData.secUpperVals||WEEK_ORDER.map(function(){return 0;}),secL=lastPredData.secLowerVals||WEEK_ORDER.map(function(){return 0;});
+        ['상위','하위'].forEach(function(tier,ti){
+            var vals=(ti===0?secU:secL);
+            var ppVals=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(vals[di]/secStaff[di]):0;});
+            gi.push([tier].concat(ppVals).concat([ppVals.reduce(function(a,b){return a+b;},0)]));
+        });
+        var secPPT=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(secEff[di]/secStaff[di]):0;});
+        gi.push(['합계'].concat(secPPT).concat([secPPT.reduce(function(a,b){return a+b;},0)]));
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(gi),'그룹별 1인 분배');
+    }
+
+    XLSX.writeFile(wb,'DB_차주예상_'+formatDate(new Date())+'.xlsx');
+}
+
+function populateHourSelector(){var s=document.getElementById('schedHour');var hs=[];for(var h=0;h<=23;h++)hs.push(h);s.innerHTML=hs.map(function(h){return'<option value="'+h+'">'+formatHour(h)+'</option>';}).join('');}
+
+// ======================== Chart Helper ========================
+function renderChart(id,type,data,extra){if(charts[id])charts[id].destroy();var opts={responsive:true,maintainAspectRatio:true,plugins:{legend:{position:type==='doughnut'?'right':'top',labels:{font:{size:11}}}}};if(extra)Object.keys(extra).forEach(function(k){opts[k]=extra[k];});charts[id]=new Chart(document.getElementById(id).getContext('2d'),{type:type,data:data,options:opts});}
+
+// ======================== Events ========================
+document.querySelectorAll('.tab').forEach(function(tab){tab.addEventListener('click',function(){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.add('active');});});
+var uploadArea=document.getElementById('uploadArea'),fileInput=document.getElementById('fileInput');
+uploadArea.addEventListener('click',function(){fileInput.click();});
+uploadArea.addEventListener('dragover',function(e){e.preventDefault();uploadArea.classList.add('dragover');});
+uploadArea.addEventListener('dragleave',function(){uploadArea.classList.remove('dragover');});
+uploadArea.addEventListener('drop',function(e){e.preventDefault();uploadArea.classList.remove('dragover');handleFiles(e.dataTransfer.files).then(updateModalUI);});
+fileInput.addEventListener('change',function(e){handleFiles(e.target.files).then(updateModalUI);});
+var aUpload=document.getElementById('attendUploadArea'),aInput=document.getElementById('attendFileInput');
+aUpload.addEventListener('click',function(){aInput.click();});
+aUpload.addEventListener('dragover',function(e){e.preventDefault();aUpload.classList.add('dragover');});
+aUpload.addEventListener('dragleave',function(){aUpload.classList.remove('dragover');});
+aUpload.addEventListener('drop',function(e){e.preventDefault();aUpload.classList.remove('dragover');if(e.dataTransfer.files.length)handleAttendanceFile(e.dataTransfer.files[0]);});
+aInput.addEventListener('change',function(e){if(e.target.files.length)handleAttendanceFile(e.target.files[0]);});
+// 타임보드/스페셜 참고 데이터 업로드
+var tbspUpload=document.getElementById('tbspUploadArea'),tbspInput=document.getElementById('tbspFileInput');
+tbspUpload.addEventListener('click',function(){tbspInput.click();});
+tbspUpload.addEventListener('dragover',function(e){e.preventDefault();tbspUpload.classList.add('dragover');});
+tbspUpload.addEventListener('dragleave',function(){tbspUpload.classList.remove('dragover');});
+tbspUpload.addEventListener('drop',function(e){e.preventDefault();tbspUpload.classList.remove('dragover');if(e.dataTransfer.files.length)handleTbspFile(e.dataTransfer.files[0]);});
+tbspInput.addEventListener('change',function(e){if(e.target.files.length)handleTbspFile(e.target.files[0]);});
+// 실제 유입 데이터 업로드
+var actualUpload=document.getElementById('actualUploadArea'),actualInput=document.getElementById('actualFileInput');
+actualUpload.addEventListener('click',function(){actualInput.click();});
+actualUpload.addEventListener('dragover',function(e){e.preventDefault();actualUpload.classList.add('dragover');});
+actualUpload.addEventListener('dragleave',function(){actualUpload.classList.remove('dragover');});
+actualUpload.addEventListener('drop',function(e){e.preventDefault();actualUpload.classList.remove('dragover');if(e.dataTransfer.files.length)handleActualInflowFile(e.dataTransfer.files[0]);});
+actualInput.addEventListener('change',function(e){if(e.target.files.length)handleActualInflowFile(e.target.files[0]);});
+
+// 서브탭 전환
+document.querySelectorAll('.share-subtab').forEach(function(st){
+    st.addEventListener('click',function(){
+        document.querySelectorAll('.share-subtab').forEach(function(s){s.classList.remove('active');});
+        document.querySelectorAll('.share-subtab-content').forEach(function(c){c.classList.remove('active');});
+        st.classList.add('active');
+        document.getElementById('sharetab-'+st.dataset.sharetab).classList.add('active');
+        // 서브탭 전환 시 차트 재렌더링
+        setTimeout(function(){renderShareCharts();},100);
+    });
+});
+
+// 퀵버튼 스크롤
+function scrollToSection(id){
+    var el=document.getElementById(id);
+    if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+document.getElementById('uploadModal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+// ======================== Init ========================
+(async function(){
+    checkSession();
+    applyAuthUI();
+    await openIDB();
+    await loadFromStorage();
+    updateAll();updateScheduleUI();
+})();
+</script>
+</body>
+</html>
