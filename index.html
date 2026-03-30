@@ -513,7 +513,7 @@ function doLogin(){
     var match=AUTH_ACCOUNTS.find(function(a){return a.id===id&&a.pw===pw;});
     if(match){
         isLoggedIn=true;currentUser=id;
-        sessionStorage.setItem('db_login',id);
+        localStorage.setItem('db_login',id);
         document.getElementById('loginOverlay').classList.add('hidden');
         applyAuthUI();
     }else{
@@ -523,7 +523,7 @@ function doLogin(){
 function doLogout(){
     if(!confirm('로그아웃 하시겠습니까?'))return;
     isLoggedIn=false;currentUser='';
-    sessionStorage.removeItem('db_login');
+    localStorage.removeItem('db_login');
     applyAuthUI();
 }
 function showLoginModal(){
@@ -535,7 +535,7 @@ function showLoginModal(){
     document.getElementById('loginId').focus();
 }
 function checkSession(){
-    var saved=sessionStorage.getItem('db_login');
+    var saved=localStorage.getItem('db_login');
     if(saved){
         var match=AUTH_ACCOUNTS.find(function(a){return a.id===saved;});
         if(match){isLoggedIn=true;currentUser=saved;document.getElementById('loginOverlay').classList.add('hidden');}
@@ -551,6 +551,9 @@ function applyAuthUI(){
     });
     // 업로드 버튼
     document.getElementById('btnUpload').style.display=isLoggedIn?'':'none';
+    // 최종 동기화 시각: 로그인 시에만 표시
+    var syncEl=document.getElementById('lastSyncTime');
+    if(syncEl) syncEl.style.display=isLoggedIn?'':'none';
     // 로그인 정보
     var infoBtn=document.getElementById('loginInfoBtn');
     infoBtn.style.display='';
@@ -2546,7 +2549,9 @@ async function saveToGitHub(){
         });
         if(resp.ok){
             updateLastSyncTime();
-            alert('동기화 완료!\n다른 사람도 접속하면 바로 데이터가 보입니다.\n(반영까지 1~2분 소요)');
+            btn.textContent='완료';btn.disabled=true;
+            setTimeout(function(){btn.textContent='동기화';btn.disabled=false;},2000);
+            return;
         }else{
             var err=await resp.json();
             if(resp.status===401){setGHToken('');alert('토큰이 유효하지 않습니다. 다시 시도해주세요.');}
@@ -2562,11 +2567,11 @@ function updateLastSyncTime(){
     var ts=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
     localStorage.setItem('lastSyncTime',ts);
     var el=document.getElementById('lastSyncTime');
-    if(el){el.textContent='최종 '+ts;el.style.display='';}
+    if(el){el.textContent='최종 동기화 '+ts;el.style.display='';}
 }
 function loadLastSyncTime(){
     var ts=localStorage.getItem('lastSyncTime');
-    if(ts){var el=document.getElementById('lastSyncTime');if(el){el.textContent='최종 '+ts;el.style.display='';}}
+    if(ts){var el=document.getElementById('lastSyncTime');if(el){el.textContent='최종 동기화 '+ts;el.style.display=isLoggedIn?'':'none';}}
 }
 
 // ======================== Auto Sync (5min) ========================
