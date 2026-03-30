@@ -2567,11 +2567,11 @@ function updateLastSyncTime(){
     var ts=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
     localStorage.setItem('lastSyncTime',ts);
     var el=document.getElementById('lastSyncTime');
-    if(el){el.textContent='최종 '+ts;el.style.display='';}
+    if(el){el.textContent='최종 동기화 '+ts;el.style.display='';}
 }
 function loadLastSyncTime(){
     var ts=localStorage.getItem('lastSyncTime');
-    if(ts){var el=document.getElementById('lastSyncTime');if(el){el.textContent='최종 '+ts;el.style.display=isLoggedIn?'':'none';}}
+    if(ts){var el=document.getElementById('lastSyncTime');if(el){el.textContent='최종 동기화 '+ts;el.style.display=isLoggedIn?'':'none';}}
 }
 
 // ======================== Auto Sync (5min) ========================
