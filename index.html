@@ -280,6 +280,7 @@
     <div class="header-right">
         <span class="data-info" id="headerInfo"></span>
         <button class="btn-upload" onclick="saveToGitHub()" id="btnSaveServer" style="display:none;background:rgba(5,150,105,0.3);border-color:rgba(5,150,105,0.5)">동기화</button>
+        <span id="lastSyncTime" style="display:none;font-size:0.68rem;color:rgba(255,255,255,0.55);white-space:nowrap;"></span>
         <button class="btn-upload" onclick="openModal()" id="btnUpload" style="display:none">데이터 업로드</button>
         <span class="login-info" id="loginInfoBtn" onclick="showLoginModal()" style="display:none"></span>
     </div>
@@ -1830,10 +1831,18 @@ function updateTierPrediction(){
 function applyCarryover(dailyVals){
     var result=dailyVals.slice();
     var carry=0;
+    var consecutiveOff=0;
     for(var i=0;i<7;i++){
-        result[i]+=carry;
-        if(!workingDayToggle[i]){carry=result[i];result[i]=0;}
-        else carry=0;
+        if(!workingDayToggle[i]){
+            consecutiveOff++;
+            // 연속 비분배일 2일 이상이면 해당 일 예상을 50%로 감소
+            if(consecutiveOff>=2) result[i]=Math.round(result[i]*0.5);
+            result[i]+=carry;
+            carry=result[i];result[i]=0;
+        }else{
+            result[i]+=carry;
+            carry=0;consecutiveOff=0;
+        }
     }
     return result;
 }
@@ -2536,6 +2545,7 @@ async function saveToGitHub(){
             body:JSON.stringify(body)
         });
         if(resp.ok){
+            updateLastSyncTime();
             alert('동기화 완료!\n다른 사람도 접속하면 바로 데이터가 보입니다.\n(반영까지 1~2분 소요)');
         }else{
             var err=await resp.json();
@@ -2545,6 +2555,26 @@ async function saveToGitHub(){
     }catch(e){alert('저장 오류: '+e.message);}
     btn.textContent='동기화';btn.disabled=false;
 }
+
+// ======================== Last Sync Time ========================
+function updateLastSyncTime(){
+    var now=new Date();
+    var ts=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+    localStorage.setItem('lastSyncTime',ts);
+    var el=document.getElementById('lastSyncTime');
+    if(el){el.textContent='최종 '+ts;el.style.display='';}
+}
+function loadLastSyncTime(){
+    var ts=localStorage.getItem('lastSyncTime');
+    if(ts){var el=document.getElementById('lastSyncTime');if(el){el.textContent='최종 '+ts;el.style.display='';}}
+}
+
+// ======================== Auto Sync (5min) ========================
+setInterval(function(){
+    if(!allData.length||!getGHToken()||!isLoggedIn)return;
+    var btn=document.getElementById('btnSaveServer');
+    if(btn&&!btn.disabled)saveToGitHub();
+},5*60*1000);
 
 async function loadFromJSON(){
     try{
@@ -2575,7 +2605,7 @@ async function loadFromJSON(){
     await openIDB();
     await loadFromStorage();
     if(!allData.length){await loadFromJSON();}
-    updateAll();updateModalUI();updateScheduleUI();updatePrediction();
+    updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
 })();
 
 // ======================== Floating Nav ========================
