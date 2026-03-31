@@ -2533,7 +2533,9 @@ async function saveToGitHub(){
     var btn=document.getElementById('btnSaveServer');
     btn.textContent='저장 중...';btn.disabled=true;
     try{
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles});
+        var now=new Date();
+        var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,lastSyncTime:syncTs});
         var content=btoa(unescape(encodeURIComponent(payload)));
         var sha='';
         try{
@@ -2597,6 +2599,7 @@ async function loadFromJSON(){
             if(payload.tbspFiles)tbspFiles=payload.tbspFiles;
             if(payload.actualInflowData)actualInflowData=payload.actualInflowData;
             if(payload.actualInflowFiles)actualInflowFiles=payload.actualInflowFiles;
+            if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             return true;
         }
     }catch(e){}
