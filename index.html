@@ -1429,10 +1429,19 @@ function calcSchedule(){
     var dayTypeLabel=weekend?'주말':'평일';
     var avg=getSpecialTimeAvgByTypeByDayType(type,weekend);
     var hk=hour!==null?hour:'unknown',hd=avg[hk]||{};
-    console.log('[DEBUG calcSchedule] type='+type+', day='+day+', hour='+hour+', weekend='+weekend);
-    console.log('[DEBUG calcSchedule] hk='+hk+', avg keys='+JSON.stringify(Object.keys(avg))+', hd='+JSON.stringify(hd));
-    console.log('[DEBUG calcSchedule] allData TB='+allData.filter(function(d){return d.isTimeboard;}).length+', SP='+allData.filter(function(d){return d.isSpecial;}).length+', tbspData='+tbspData.length);
-    var overlap=getOverlapDateHours(type);console.log('[DEBUG overlap] excluded='+Object.keys(overlap).length+', total keys checked (allData+tbspData)');
+    // 해당 시간대에 데이터가 없으면 전체 시간대 평균으로 폴백
+    if(!hd.total&&Object.keys(avg).length>0){
+        var sumTotal=0,sumByType={},cnt=0;
+        DB_TYPES.forEach(function(t){sumByType[t]=0;});
+        Object.keys(avg).forEach(function(ak){
+            if(avg[ak].total>0){sumTotal+=avg[ak].total;cnt++;DB_TYPES.forEach(function(t){sumByType[t]+=avg[ak][t]||0;});}
+        });
+        if(cnt>0){
+            hd={total:Math.round(sumTotal/cnt)};
+            DB_TYPES.forEach(function(t){hd[t]=Math.round(sumByType[t]/cnt);});
+            console.log('[calcSchedule] 시간 '+hk+'에 데이터 없음 → 전체 시간대 평균 사용: '+JSON.stringify(hd));
+        }
+    }
     var bd={},tp=0;
     DB_TYPES.forEach(function(dt){
         var dtAvg=hd[dt]||0;
