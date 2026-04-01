@@ -343,6 +343,9 @@
                         <label style="font-size:0.82rem;">톡이즈 <input type="number" id="pct_톡이즈" value="0" min="0" max="100" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" oninput="updatePctTotal()"></label>
                         <span id="pctTotal" style="font-weight:600;font-size:0.85rem;color:#2e7d32;">합계: 100%</span>
                         <span style="margin-left:8px;border-left:1px solid #ddd;padding-left:10px;">
+                        <label style="font-size:0.82rem;color:#1565c0;font-weight:600;">예상 DB수 <input type="number" id="manualDB" value="" min="0" style="width:80px;padding:4px;border:1px solid #ddd;border-radius:4px;" placeholder="자동"> <span style="font-size:0.72rem;color:#999;">비우면 자동계산</span></label>
+                        </span>
+                        <span style="margin-left:8px;border-left:1px solid #ddd;padding-left:10px;">
                         <label style="font-size:0.82rem;color:#e65100;font-weight:600;">광고비 <input type="number" id="adCost" value="0" min="0" step="10000" style="width:90px;padding:4px;border:1px solid #ddd;border-radius:4px;" placeholder="만원"> <span style="font-size:0.72rem;color:#999;">만원</span></label>
                         </span>
                         <button id="schedAddBtn" onclick="addSchedule()" style="padding:7px 18px;background:#1a237e;color:white;border:none;border-radius:6px;font-size:0.85rem;cursor:pointer;">추가</button>
@@ -475,15 +478,6 @@
                 <div class="modal-summary" id="attendSummary" style="font-size:0.75rem;"></div>
             </div>
             <div>
-                <p style="font-size:0.75rem;color:#00838f;font-weight:600;margin-bottom:3px;">TB/SP 참고 <span style="background:#e0f7fa;padding:1px 5px;border-radius:8px;font-size:0.65rem;">덮어쓰기</span></p>
-                <div class="upload-area-sm" id="tbspUploadArea" style="padding:10px;margin-bottom:4px;border-color:#00838f;">
-                    <p style="margin:0;font-size:0.78rem;"><strong>타임보드/스페셜 업로드</strong></p>
-                    <input type="file" id="tbspFileInput" accept=".xlsx,.xls" style="display:none">
-                </div>
-                <div class="file-list" id="tbspFileList"></div>
-                <div class="modal-summary" id="tbspSummary" style="font-size:0.75rem;"></div>
-            </div>
-            <div>
                 <p style="font-size:0.75rem;color:#7b1fa2;font-weight:600;margin-bottom:3px;">실제 유입 <span style="background:#f3e5f5;padding:1px 5px;border-radius:8px;font-size:0.65rem;">덮어쓰기</span></p>
                 <div class="upload-area-actual" id="actualUploadArea" style="padding:10px;margin-bottom:4px;">
                     <p style="margin:0;font-size:0.78rem;"><strong>실제 유입 업로드</strong></p>
@@ -572,7 +566,7 @@ var attendanceData=[],attendanceFiles=[],attendanceMonth='';
 // 분배 여부 토글: [토,일,월,화,수,목,금] — true=분배일, false=비분배일(이월)
 var workingDayToggle=[true,false,true,true,true,true,true];
 // 타임보드/스페셜 참고 데이터 (A열 유입일, B열 매체코드)
-var tbspData=[],tbspFiles=[];
+var tbspData=[],tbspFiles=[]; // 레거시: 더 이상 사용하지 않음 (하위호환용 유지)
 // 실제 유입 데이터
 var actualInflowData=[],actualInflowFiles=[];
 
@@ -859,48 +853,6 @@ async function handleAttendanceFile(file){
     hideLoading();
 }
 
-// 타임보드/스페셜 참고 데이터 처리
-function processTbspFile(file){
-    return new Promise(function(res,rej){
-        var r=new FileReader();r.onload=function(e){
-            try{
-                var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
-                var ws=wb.Sheets[wb.SheetNames[0]];
-                var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-                var recs=[];
-                for(var i=1;i<rows.length;i++){
-                    var row=rows[i];if(!row||row.length<2)continue;
-                    var dt=parseExcelDate(row[0]),mc=row[1]?String(row[1]).trim():'';
-                    if(!dt||!mc)continue;
-                    var tb=mc.toLowerCase().includes('naver_tb');
-                    var sp=mc.toLowerCase().includes('naver_sp');
-                    if(!tb&&!sp)continue;
-                    var hr=parseMediaTime(mc);
-                    recs.push({dateStr:formatDate(dt),hour:hr,type:tb?'timeboard':'special',mediaCode:mc,isWeekend:isWeekendOrHoliday(formatDate(dt))});
-                }
-                res({fileName:file.name,records:recs});
-            }catch(err){rej(err);}
-        };r.onerror=rej;r.readAsArrayBuffer(file);
-    });
-}
-async function handleTbspFile(file){
-    showLoading('타임보드/스페셜 데이터 처리 중...');
-    updateLoading(20,file.name+' 분석 중...');
-    await new Promise(function(r){setTimeout(r,50);});
-    try{
-        var r=await processTbspFile(file);
-        updateLoading(60,r.records.length+'건 처리 완료');
-        await new Promise(function(r2){setTimeout(r2,30);});
-        tbspData=r.records;tbspFiles=[r.fileName];
-        await idbPut('tbspData',tbspData);await idbPut('tbspFiles',tbspFiles);
-        updateLoading(90,'화면 업데이트 중...');
-        await new Promise(function(r2){setTimeout(r2,30);});
-        updateAll();updateModalUI();
-        updateLoading(100,'완료! ('+r.records.length+'건)');
-        await new Promise(function(r2){setTimeout(r2,400);});
-    }catch(err){alert('타임보드/스페셜 파일 오류: '+err.message);}
-    hideLoading();
-}
 async function removeActualFile(idx){
     var fn=actualInflowFiles[idx];
     if(!confirm(fn+' 실제 유입 데이터를 삭제하시겠습니까?'))return;
@@ -1149,7 +1101,7 @@ function getMediaDOWTableByPeriod(f,p){var gc=getBatchDOWDateCounts(p),s={};MEDI
 function getDBTypeBreakdown(){var m={};DB_TYPES.forEach(function(t){m[t]=0;});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial)m[d.dbType]++;});return m;}
 function getMediaGroupBreakdown(){var m={};MEDIA_TYPES.forEach(function(t){m[t]=0;});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&m.hasOwnProperty(d.media))m[d.media]++;});return m;}
 // 동일 날짜+시간에 2개 이상 패키지가 동시 집행된 경우 식별 (평균 계산에서 제외)
-// allData와 tbspData를 각각 독립적으로 체크 (소스 간 미디어코드 형식 차이로 인한 오탐 방지)
+// allData 내에서 동일 날짜+시간에 2개 이상 패키지 동시 집행 감지
 function getOverlapDateHours(type){
     var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
     var pkgMap1={};
@@ -1160,21 +1112,9 @@ function getOverlapDateHours(type){
         if(!pkgMap1[k])pkgMap1[k]={};
         pkgMap1[k][pkg]=true;
     });
-    var pkgMap2={};
-    tbspData.forEach(function(d){
-        if(d.type!==type)return;
-        var hr=d.hour!==null?d.hour:'unknown';
-        var k=d.dateStr+'|'+hr;
-        var pkg=extractPackage(d.mediaCode);
-        if(!pkgMap2[k])pkgMap2[k]={};
-        pkgMap2[k][pkg]=true;
-    });
     var exclude={};
     Object.keys(pkgMap1).forEach(function(k){
         if(Object.keys(pkgMap1[k]).length>=2)exclude[k]=true;
-    });
-    Object.keys(pkgMap2).forEach(function(k){
-        if(Object.keys(pkgMap2[k]).length>=2)exclude[k]=true;
     });
     return exclude;
 }
@@ -1213,15 +1153,10 @@ function getAvailablePackages(type){
         var pkg=extractPackage(d.mediaCode);
         if(pkg!=='unknown')pkgs[pkg]=true;
     });
-    tbspData.forEach(function(d){
-        if(d.type!==type)return;
-        var pkg=extractPackage(d.mediaCode);
-        if(pkg!=='unknown')pkgs[pkg]=true;
-    });
     return Object.keys(pkgs).sort();
 }
 
-// 패키지별 시간대 평균 (주말/평일 구분, allData 기준, tbspData는 날짜 보완용)
+// 패키지별 시간대 평균 (주말/평일 구분, allData 기준)
 function getPackageTimeAvg(type,isWeekend,pkg){
     var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
     var overlap=getOverlapDateHours(type);
@@ -1236,18 +1171,6 @@ function getPackageTimeAvg(type,isWeekend,pkg){
         if(!datesByHour[k])datesByHour[k]={};
         if(!datesByHour[k][d.dateStr])datesByHour[k][d.dateStr]=0;
         datesByHour[k][d.dateStr]++;
-    });
-
-    // 2) tbspData에서 날짜 보완 (DB수량 카운트 안 함)
-    tbspData.forEach(function(d){
-        if(d.type!==type)return;
-        if(d.isWeekend!==isWeekend)return;
-        if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
-        var k=d.hour!==null?d.hour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(!datesByHour[k])datesByHour[k]={};
-        if(datesByHour[k][d.dateStr]>0)return;
-        if(!datesByHour[k].hasOwnProperty(d.dateStr))datesByHour[k][d.dateStr]=0;
     });
 
     // 날짜별 수량 3 이하 노이즈 필터
@@ -1283,7 +1206,7 @@ function getPackageTimeAvg(type,isWeekend,pkg){
     return r;
 }
 
-// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData 기준, tbspData는 날짜 보완용)
+// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData 기준)
 function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
     var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
     var overlap=getOverlapDateHours(type);
@@ -1297,19 +1220,6 @@ function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
         if(!datesByHour[k])datesByHour[k]={};
         if(!datesByHour[k][d.dateStr])datesByHour[k][d.dateStr]=0;
         datesByHour[k][d.dateStr]++;
-    });
-
-    // 2) tbspData에서 날짜+시간 보완 (allData에 없는 시간대 커버, DB수량은 카운트하지 않음)
-    tbspData.forEach(function(d){
-        if(d.type!==type)return;
-        if(d.isWeekend!==isWeekend)return;
-        var k=d.hour!==null?d.hour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(!datesByHour[k])datesByHour[k]={};
-        // allData에 이미 해당 날짜+시간 데이터가 있으면 스킵 (중복 카운트 방지)
-        if(datesByHour[k][d.dateStr]>0)return;
-        // allData에 없는 날짜만 0으로 등록 (해당 시간대가 존재했음을 표시)
-        if(!datesByHour[k].hasOwnProperty(d.dateStr))datesByHour[k][d.dateStr]=0;
     });
 
     // 날짜별 수량이 3 이하인 날은 노이즈로 간주하여 제외
@@ -1378,14 +1288,6 @@ function updateModalUI(){
     var as=document.getElementById('attendSummary');
     if(!attendanceData.length)as.textContent='';
     else{var cats={'영어':0,'제2외국어':0,'톡이즈':0};attendanceData.forEach(function(p){var c=classifyStaffDB(p);if(cats.hasOwnProperty(c))cats[c]++;});as.textContent='근태 '+attendanceMonth+' | '+attendanceData.length+'명 (영어'+cats['영어']+' 제2외'+cats['제2외국어']+' 톡이즈'+cats['톡이즈']+')';}
-    // tbsp
-    var tel=document.getElementById('tbspFileList');
-    tel.innerHTML=tbspFiles.length?tbspFiles.map(function(f){return'<span class="file-item" style="background:#e0f7fa;color:#00838f;">'+f+'</span>';}).join(''):'';
-    var tsum=document.getElementById('tbspSummary');
-    if(!tbspData.length)tsum.textContent='';
-    else{var tc=0,sc2=0;tbspData.forEach(function(d){if(d.type==='timeboard')tc++;else sc2++;});
-        var ds2={};tbspData.forEach(function(d){ds2[d.dateStr]=true;});var dk2=Object.keys(ds2).sort();
-        tsum.textContent='총 '+tbspData.length.toLocaleString()+'건 (타임보드 '+tc.toLocaleString()+' / 스페셜 '+sc2.toLocaleString()+') | '+dk2[0]+' ~ '+dk2[dk2.length-1];}
     // 실제 유입 데이터
     var acEl=document.getElementById('actualFileList');
     acEl.innerHTML=actualInflowFiles.length?actualInflowFiles.map(function(f,i){return'<span class="file-item file-item-actual">'+f+'<span class="file-del" onclick="removeActualFile('+i+')" title="삭제">&times;</span></span>';}).join(''):'';
@@ -1427,32 +1329,40 @@ function calcSchedule(){
     var dateStr=dayIdx>=0?wd[dayIdx]:'';
     var weekend=dateStr?isWeekendOrHoliday(dateStr):(day===0||day===6);
     var dayTypeLabel=weekend?'주말':'평일';
-    var avg=getSpecialTimeAvgByTypeByDayType(type,weekend);
-    var hk=hour!==null?hour:'unknown',hd=avg[hk]||{};
-    // 해당 시간대에 데이터가 없으면 전체 시간대 평균으로 폴백
-    if(!hd.total&&Object.keys(avg).length>0){
-        var sumTotal=0,sumByType={},cnt=0;
-        DB_TYPES.forEach(function(t){sumByType[t]=0;});
-        Object.keys(avg).forEach(function(ak){
-            if(avg[ak].total>0){sumTotal+=avg[ak].total;cnt++;DB_TYPES.forEach(function(t){sumByType[t]+=avg[ak][t]||0;});}
-        });
-        if(cnt>0){
-            hd={total:Math.round(sumTotal/cnt)};
-            DB_TYPES.forEach(function(t){hd[t]=Math.round(sumByType[t]/cnt);});
-            console.log('[calcSchedule] 시간 '+hk+'에 데이터 없음 → 전체 시간대 평균 사용: '+JSON.stringify(hd));
-        }
-    }
+    var manualDB=parseInt(document.getElementById('manualDB').value);
+    var isManual=manualDB>0;
     var bd={},tp=0;
-    DB_TYPES.forEach(function(dt){
-        var dtAvg=hd[dt]||0;
-        var pct=pcts[dt]||0;
-        if(pct>0&&dtAvg>0){bd[dt]=round5(dtAvg*pct/100);}
-        else if(pct>0){bd[dt]=round5((hd.total||0)*pct/100);}
-        else{bd[dt]=0;}
-        tp+=bd[dt];
-    });
+    if(isManual){
+        // 수동 입력: 입력한 총 DB수를 비중대로 분배
+        DB_TYPES.forEach(function(dt){
+            var pct=pcts[dt]||0;
+            bd[dt]=pct>0?round5(manualDB*pct/100):0;
+            tp+=bd[dt];
+        });
+    }else{
+        // 자동 계산: allData 평균 기반
+        var avg=getSpecialTimeAvgByTypeByDayType(type,weekend);
+        var hk=hour!==null?hour:'unknown',hd=avg[hk]||{};
+        // 해당 시간대에 데이터가 없으면 전체 시간대 평균으로 폴백
+        if(!hd.total&&Object.keys(avg).length>0){
+            var sumTotal=0,sumByType={},cnt=0;
+            DB_TYPES.forEach(function(t){sumByType[t]=0;});
+            Object.keys(avg).forEach(function(ak){
+                if(avg[ak].total>0){sumTotal+=avg[ak].total;cnt++;DB_TYPES.forEach(function(t){sumByType[t]+=avg[ak][t]||0;});}
+            });
+            if(cnt>0){hd={total:Math.round(sumTotal/cnt)};DB_TYPES.forEach(function(t){hd[t]=Math.round(sumByType[t]/cnt);});}
+        }
+        DB_TYPES.forEach(function(dt){
+            var dtAvg=hd[dt]||0;
+            var pct=pcts[dt]||0;
+            if(pct>0&&dtAvg>0){bd[dt]=round5(dtAvg*pct/100);}
+            else if(pct>0){bd[dt]=round5((hd.total||0)*pct/100);}
+            else{bd[dt]=0;}
+            tp+=bd[dt];
+        });
+    }
     var adCost=parseInt(document.getElementById('adCost').value)||0;
-    return{type:type,day:day,hour:hour,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel,adCost:adCost};
+    return{type:type,day:day,hour:hour,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel,adCost:adCost,manualDB:isManual?manualDB:0};
 }
 function addSchedule(){
     var data=calcSchedule();if(!data)return;
@@ -1476,6 +1386,7 @@ function editSchedule(id){
     populateHourSelector();
     document.getElementById('schedHour').value=s.hour!==null?s.hour:'';
     DB_TYPES.forEach(function(dt){document.getElementById('pct_'+dt).value=s.pcts[dt]||0;});
+    document.getElementById('manualDB').value=s.manualDB||'';
     document.getElementById('adCost').value=s.adCost||0;
     updatePctTotal();
     // 버튼 텍스트 변경
@@ -1576,6 +1487,7 @@ function updateScheduleUI(){
     if(!schedules.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#999;">추가된 스케줄이 없습니다</td></tr>';return;}
     tb.innerHTML=schedules.map(function(s){
         var pp=[],dp=[];DB_TYPES.forEach(function(dt){if(s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');if(s.breakdown[dt]>0)dp.push(dt+' '+s.breakdown[dt]);});
+        var manualTag=s.manualDB?'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">수동</span>':'';
         var dayIdx=WEEK_ORDER.indexOf(s.day);
         var dayLabel=dayIdx>=0?pdl[dayIdx]:DAY_NAMES[s.day];
         var dtBadge=s.dayType==='주말'?'<span style="display:inline-block;background:#fff3e0;color:#e65100;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">주말</span>':'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">평일</span>';
@@ -1586,7 +1498,7 @@ function updateScheduleUI(){
         if(sh)distLabel+=' <span style="color:#d84315;font-size:0.72rem;">(다음날)</span>';
         return'<tr><td><span class="badge '+(s.type==='timeboard'?'badge-blue':'badge-orange')+'">'+(s.type==='timeboard'?'타임보드':'스페셜')+'</span></td>'
             +'<td>'+dayLabel+dtBadge+'</td><td>'+formatHour(s.hour)+'</td><td style="font-size:0.8rem;">'+ps+'</td>'
-            +'<td class="num">'+pr+'</td><td class="num">'+(s.adCost?s.adCost.toLocaleString()+'만':'-')+'</td><td>'+distLabel+'</td>'
+            +'<td class="num">'+pr+manualTag+'</td><td class="num">'+(s.adCost?s.adCost.toLocaleString()+'만':'-')+'</td><td>'+distLabel+'</td>'
             +'<td><span style="color:#1a237e;cursor:pointer;margin-right:8px;" onclick="editSchedule('+s.id+')">수정</span><span style="color:#e53935;cursor:pointer;" onclick="removeSchedule('+s.id+')">삭제</span></td></tr>';
     }).join('');
 }
@@ -2549,13 +2461,6 @@ aUpload.addEventListener('dragover',function(e){e.preventDefault();aUpload.class
 aUpload.addEventListener('dragleave',function(){aUpload.classList.remove('dragover');});
 aUpload.addEventListener('drop',function(e){e.preventDefault();aUpload.classList.remove('dragover');if(e.dataTransfer.files.length)handleAttendanceFile(e.dataTransfer.files[0]);});
 aInput.addEventListener('change',function(e){if(e.target.files.length)handleAttendanceFile(e.target.files[0]);});
-// 타임보드/스페셜 참고 데이터 업로드
-var tbspUpload=document.getElementById('tbspUploadArea'),tbspInput=document.getElementById('tbspFileInput');
-tbspUpload.addEventListener('click',function(){tbspInput.click();});
-tbspUpload.addEventListener('dragover',function(e){e.preventDefault();tbspUpload.classList.add('dragover');});
-tbspUpload.addEventListener('dragleave',function(){tbspUpload.classList.remove('dragover');});
-tbspUpload.addEventListener('drop',function(e){e.preventDefault();tbspUpload.classList.remove('dragover');if(e.dataTransfer.files.length)handleTbspFile(e.dataTransfer.files[0]);});
-tbspInput.addEventListener('change',function(e){if(e.target.files.length)handleTbspFile(e.target.files[0]);});
 // 실제 유입 데이터 업로드
 var actualUpload=document.getElementById('actualUploadArea'),actualInput=document.getElementById('actualFileInput');
 actualUpload.addEventListener('click',function(){actualInput.click();});
