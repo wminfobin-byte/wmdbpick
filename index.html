@@ -1221,56 +1221,46 @@ function getAvailablePackages(type){
     return Object.keys(pkgs).sort();
 }
 
-// 패키지별 시간대 평균 (주말/평일 구분)
+// 패키지별 시간대 평균 (주말/평일 구분, allData 기준, tbspData는 날짜 보완용)
 function getPackageTimeAvg(type,isWeekend,pkg){
     var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
     var overlap=getOverlapDateHours(type);
-    var totalByHour={},datesByHour={};
+    var datesByHour={};
+
+    // 1) allData에서 DB 수량 수집
     allData.filter(fn).forEach(function(d){
         if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
         if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
         var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
-        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
-        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+        if(!datesByHour[k])datesByHour[k]={};
+        if(!datesByHour[k][d.dateStr])datesByHour[k][d.dateStr]=0;
+        datesByHour[k][d.dateStr]++;
     });
+
+    // 2) tbspData에서 날짜 보완 (DB수량 카운트 안 함)
     tbspData.forEach(function(d){
         if(d.type!==type)return;
         if(d.isWeekend!==isWeekend)return;
         if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
         var k=d.hour!==null?d.hour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
-        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
-        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+        if(!datesByHour[k])datesByHour[k]={};
+        if(datesByHour[k][d.dateStr]>0)return;
+        if(!datesByHour[k].hasOwnProperty(d.dateStr))datesByHour[k][d.dateStr]=0;
     });
+
     // 날짜별 수량 3 이하 노이즈 필터
-    var perDateTotalP={};
-    Object.keys(datesByHour).forEach(function(k){
-        perDateTotalP[k]={};
-        Object.keys(datesByHour[k]).forEach(function(ds){perDateTotalP[k][ds]=0;});
-    });
-    allData.filter(fn).forEach(function(d){
-        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
-        if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
-        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(perDateTotalP[k]&&perDateTotalP[k].hasOwnProperty(d.dateStr))perDateTotalP[k][d.dateStr]++;
-    });
-    tbspData.forEach(function(d){
-        if(d.type!==type||d.isWeekend!==isWeekend)return;
-        if(pkg&&extractPackage(d.mediaCode)!==pkg)return;
-        var k=d.hour!==null?d.hour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(perDateTotalP[k]&&perDateTotalP[k].hasOwnProperty(d.dateStr))perDateTotalP[k][d.dateStr]++;
-    });
-    var r={};Object.keys(totalByHour).forEach(function(k){
-        var dates=Object.keys(datesByHour[k]);
-        var validDates=dates.filter(function(ds){return perDateTotalP[k][ds]>3;});
-        if(!validDates.length)validDates=dates;
-        var validSum=validDates.reduce(function(s,ds){return s+(perDateTotalP[k][ds]||0);},0);
-        r[k]={total:Math.round(validSum/(validDates.length||1))};
+    var r={};Object.keys(datesByHour).forEach(function(k){
+        var allDates=Object.keys(datesByHour[k]);
+        var datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>3;});
+        if(!datesWithData.length)datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>0;});
+        if(!datesWithData.length){r[k]={total:0};DB_TYPES.forEach(function(t){r[k][t]=0;});return;}
+        var validSum=datesWithData.reduce(function(s,ds){return s+datesByHour[k][ds];},0);
+        r[k]={total:Math.round(validSum/datesWithData.length)};
         DB_TYPES.forEach(function(t){r[k][t]=0;});
     });
+
     // DB종류별 비율 (유효 날짜 기준)
     var typeRatio={};
     allData.filter(fn).forEach(function(d){
@@ -1279,10 +1269,10 @@ function getPackageTimeAvg(type,isWeekend,pkg){
         var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
         if(!r[k])return;
-        var dates=Object.keys(datesByHour[k]||{});
-        var validDates=dates.filter(function(ds){return perDateTotalP[k][ds]>3;});
-        if(!validDates.length)validDates=dates;
-        if(validDates.indexOf(d.dateStr)===-1)return;
+        var allDates=Object.keys(datesByHour[k]||{});
+        var datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>3;});
+        if(!datesWithData.length)datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>0;});
+        if(datesWithData.indexOf(d.dateStr)===-1)return;
         if(!typeRatio[k]){typeRatio[k]={};DB_TYPES.forEach(function(t){typeRatio[k][t]=0;});typeRatio[k]._sum=0;}
         typeRatio[k][d.dbType]++;typeRatio[k]._sum++;
     });
@@ -1293,56 +1283,44 @@ function getPackageTimeAvg(type,isWeekend,pkg){
     return r;
 }
 
-// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData + tbspData 통합)
+// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData 기준, tbspData는 날짜 보완용)
 function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
     var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
     var overlap=getOverlapDateHours(type);
-    var totalByHour={},datesByHour={};
+    var datesByHour={};
 
-    // 1) 기존 allData에서 수집 (동일 날짜+시간 복수 패키지 제외)
+    // 1) allData에서 DB 수량 수집 (실제 DB 건수)
     allData.filter(fn).forEach(function(d){
         if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
         var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
-        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
-        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+        if(!datesByHour[k])datesByHour[k]={};
+        if(!datesByHour[k][d.dateStr])datesByHour[k][d.dateStr]=0;
+        datesByHour[k][d.dateStr]++;
     });
 
-    // 2) tbspData에서 추가 수집 (동일 날짜+시간 복수 패키지 제외)
+    // 2) tbspData에서 날짜+시간 보완 (allData에 없는 시간대 커버, DB수량은 카운트하지 않음)
     tbspData.forEach(function(d){
         if(d.type!==type)return;
         if(d.isWeekend!==isWeekend)return;
         var k=d.hour!==null?d.hour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
-        if(!totalByHour[k]){totalByHour[k]=0;datesByHour[k]={};}
-        totalByHour[k]++;datesByHour[k][d.dateStr]=true;
+        if(!datesByHour[k])datesByHour[k]={};
+        // allData에 이미 해당 날짜+시간 데이터가 있으면 스킵 (중복 카운트 방지)
+        if(datesByHour[k][d.dateStr]>0)return;
+        // allData에 없는 날짜만 0으로 등록 (해당 시간대가 존재했음을 표시)
+        if(!datesByHour[k].hasOwnProperty(d.dateStr))datesByHour[k][d.dateStr]=0;
     });
 
     // 날짜별 수량이 3 이하인 날은 노이즈로 간주하여 제외
-    var perDateTotal={};
-    Object.keys(datesByHour).forEach(function(k){
-        perDateTotal[k]={};
-        Object.keys(datesByHour[k]).forEach(function(ds){perDateTotal[k][ds]=0;});
-    });
-    allData.filter(fn).forEach(function(d){
-        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
-        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(perDateTotal[k]&&perDateTotal[k].hasOwnProperty(d.dateStr))perDateTotal[k][d.dateStr]++;
-    });
-    tbspData.forEach(function(d){
-        if(d.type!==type||d.isWeekend!==isWeekend)return;
-        var k=d.hour!==null?d.hour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(perDateTotal[k]&&perDateTotal[k].hasOwnProperty(d.dateStr))perDateTotal[k][d.dateStr]++;
-    });
-
-    var r={};Object.keys(totalByHour).forEach(function(k){
-        var dates=Object.keys(datesByHour[k]);
-        var validDates=dates.filter(function(ds){return perDateTotal[k][ds]>3;});
-        if(!validDates.length)validDates=dates;
-        var validSum=validDates.reduce(function(s,ds){return s+(perDateTotal[k][ds]||0);},0);
-        var n=validDates.length||1;
+    var r={};Object.keys(datesByHour).forEach(function(k){
+        var allDates=Object.keys(datesByHour[k]);
+        var datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>3;});
+        // 유효 날짜가 없으면 데이터 있는 날짜만 사용 (0인 날 제외)
+        if(!datesWithData.length)datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>0;});
+        if(!datesWithData.length){r[k]={total:0};DB_TYPES.forEach(function(t){r[k][t]=0;});return;}
+        var validSum=datesWithData.reduce(function(s,ds){return s+datesByHour[k][ds];},0);
+        var n=datesWithData.length;
         r[k]={total:Math.round(validSum/n)};
         DB_TYPES.forEach(function(t){r[k][t]=0;});
     });
@@ -1355,10 +1333,10 @@ function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
         var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
         if(!r[k])return;
-        var dates=Object.keys(datesByHour[k]||{});
-        var validDates=dates.filter(function(ds){return perDateTotal[k][ds]>3;});
-        if(!validDates.length)validDates=dates;
-        if(validDates.indexOf(d.dateStr)===-1)return;
+        var allDates=Object.keys(datesByHour[k]||{});
+        var datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>3;});
+        if(!datesWithData.length)datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>0;});
+        if(datesWithData.indexOf(d.dateStr)===-1)return;
         if(!typeRatio[k]){typeRatio[k]={};DB_TYPES.forEach(function(t){typeRatio[k][t]=0;});typeRatio[k]._sum=0;}
         typeRatio[k][d.dbType]++;typeRatio[k]._sum++;
     });
