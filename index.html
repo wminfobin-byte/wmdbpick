@@ -723,7 +723,7 @@ function classifyDBGroup(dt){if(dt==='톡이즈')return'톡이즈';if(SEC_LANG_T
 function classifyMedia(mc){if(!mc)return'일반';var c=mc.toLowerCase();if(c.includes('naver_tb'))return'타임보드';if(c.includes('naver_sp'))return'스페셜';if(c.includes('gfa'))return'GFA';if(c.includes('kakao'))return'카카오';if(c.includes('facebook')||c.includes('insta')||c.includes('meta'))return'메타';if(c.includes('gdn'))return'GDN';if(c.includes('daan'))return'당근';return'일반';}
 function isTimeboard(mc){return mc&&mc.toLowerCase().includes('naver_tb');}
 function isSpecialMedia(mc){return mc&&mc.toLowerCase().includes('naver_sp');}
-function shouldExclude(row){var ob=row[7]?String(row[7]):'',di=row[15]?String(row[15]):'',mc=row[19]?String(row[19]).trim():'';if(!mc||ob.includes('관리자')||di.includes('IN')||di.includes('재콜'))return true;var cl=mc.toLowerCase();return cl.includes('callback')||cl.includes('tv_b')||cl.includes('_h_');}
+function shouldExclude(row){var ob=row[7]?String(row[7]):'',dbInfo=row[15]?String(row[15]).trim():'',mc=row[19]?String(row[19]).trim():'';if(!mc||ob.includes('관리자')||dbInfo.includes('IN')||dbInfo.includes('재콜'))return true;if(dbInfo!==''&&dbInfo!=='(재분배)')return true;var cl=mc.toLowerCase();return cl.includes('callback')||cl.includes('tv_b')||cl.includes('_h_');}
 function parseMediaTime(mc){if(!mc)return null;var m=mc.match(/(\d{1,2})(AM|PM)$/i);if(!m)return null;var h=parseInt(m[1]),p=m[2].toUpperCase();if(p==='PM'&&h!==12)h+=12;if(p==='AM'&&h===12)h=0;return h;}
 function formatHour(h){if(h===null||h===undefined)return'미상';var p=h<12?'AM':'PM';var d=h===0?12:h>12?h-12:h;return d+p;}
 
