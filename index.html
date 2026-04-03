@@ -753,7 +753,14 @@ function getWorkingSecStaffForDate(ds){
     }
     var cnt=0;attendanceData.forEach(function(p){if(classifyStaffDB(p)==='제2외국어'&&isWorkingStatus(p.daily[dom]))cnt++;});return cnt;
 }
-function getNextWeekDates(){var r=getNextWeekRange(),d=[];for(var i=0;i<7;i++){var x=new Date(r.start);x.setDate(x.getDate()+i);d.push(formatDate(x));}return d;}
+var _nwrCache=null,_nwdCache=null,_nwCacheKey='';
+function invalidateWeekCache(){_nwrCache=null;_nwdCache=null;_nwCacheKey='';}
+function getNextWeekDates(){
+    var key=allData.length+'_'+(allData.length?allData[allData.length-1].dateStr:'');
+    if(_nwdCache&&_nwCacheKey===key)return _nwdCache;
+    var r=getNextWeekRange(),d=[];for(var i=0;i<7;i++){var x=new Date(r.start);x.setDate(x.getDate()+i);d.push(formatDate(x));}
+    _nwdCache=d;_nwCacheKey=key;return d;
+}
 
 // ======================== Batch / Date ========================
 function getBatchInfo(dt){var h=dt.getHours(),m=dt.getMinutes(),t=h*60+m;if(t>=600&&t<855)return{batchDate:formatDate(dt),batchPeriod:'오후'};if(t>=855){var n=new Date(dt);n.setDate(n.getDate()+1);return{batchDate:formatDate(n),batchPeriod:'오전'};}return{batchDate:formatDate(dt),batchPeriod:'오전'};}
@@ -1342,11 +1349,7 @@ function calcSchedule(){
     }else{
         // 자동 계산: allData 평균 기반
         var avg=getSpecialTimeAvgByTypeByDayType(type,weekend);
-        console.log('[스케줄 디버그] type='+type+', weekend='+weekend+', hour='+hour);
-        console.log('[스케줄 디버그] avg keys:', Object.keys(avg));
-        console.log('[스케줄 디버그] avg 전체:', JSON.stringify(avg));
         var hk=hour!==null?hour:'unknown',hd=avg[hk]||{};
-        console.log('[스케줄 디버그] hk='+hk+', hd:', JSON.stringify(hd));
         // 해당 시간대에 데이터가 없으면 전체 시간대 평균으로 폴백
         if(!hd.total&&Object.keys(avg).length>0){
             var sumTotal=0,sumByType={},cnt=0;
