@@ -322,14 +322,11 @@
             <div id="predictionTables"></div>
 
             <div class="section">
-                <h3>타임보드 / 스페셜 차주 스케줄</h3>
+                <h3 style="display:flex;align-items:center;gap:10px;">타임보드 / 스페셜 스케줄 <button onclick="clearAllSchedules()" style="padding:4px 12px;background:#e53935;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;">전체삭제</button></h3>
                 <p style="color:#666;font-size:0.85rem;margin-bottom:12px;">5PM 이후 타임보드/스페셜은 자동으로 다음날 분배에 포함</p>
                 <div class="schedule-form">
                     <select id="schedType"><option value="timeboard">타임보드</option><option value="special">스페셜</option></select>
-                    <select id="schedDay">
-                        <option value="6">토</option><option value="0">일</option><option value="1">월</option>
-                        <option value="2">화</option><option value="3">수</option><option value="4">목</option><option value="5">금</option>
-                    </select>
+                    <input type="date" id="schedDate" style="padding:6px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;">
                     <select id="schedHour"></select>
                 </div>
                 <div style="margin-bottom:14px;padding:12px;background:#f5f5f5;border-radius:8px;">
@@ -354,7 +351,7 @@
                 </div>
                 <div class="table-wrap">
                     <table id="specialPredTable">
-                        <thead><tr><th>유형</th><th>요일</th><th>시간</th><th>비중</th><th class="num">예상 DB수</th><th class="num">광고비</th><th>분배일</th><th></th></tr></thead>
+                        <thead><tr><th>유형</th><th>날짜</th><th>시간</th><th>비중</th><th class="num">예상 DB수</th><th class="num">광고비</th><th>분배일</th><th></th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -1322,12 +1319,15 @@ function toggleCollapsible(id){var el=document.getElementById(id);el.classList.t
 var editingScheduleId=null; // 수정 중인 스케줄 ID
 function updatePctTotal(){var t=0;DB_TYPES.forEach(function(dt){t+=parseInt(document.getElementById('pct_'+dt).value)||0;});var el=document.getElementById('pctTotal');el.textContent='합계: '+t+'%';el.style.color=t===100?'#2e7d32':'#e53935';}
 function calcSchedule(){
-    var type=document.getElementById('schedType').value,day=parseInt(document.getElementById('schedDay').value),hour=document.getElementById('schedHour').value!==''?parseInt(document.getElementById('schedHour').value):null;
+    var type=document.getElementById('schedType').value;
+    var schedDate=document.getElementById('schedDate').value;
+    if(!schedDate){alert('날짜를 선택해주세요.');return null;}
+    var dateObj=new Date(schedDate+'T00:00:00');
+    var day=dateObj.getDay();
+    var hour=document.getElementById('schedHour').value!==''?parseInt(document.getElementById('schedHour').value):null;
     var pcts={},pt=0;DB_TYPES.forEach(function(dt){var v=parseInt(document.getElementById('pct_'+dt).value)||0;pcts[dt]=v;pt+=v;});
     if(pt!==100){alert('비중 합계가 100%여야 합니다 (현재: '+pt+'%)');return null;}
-    var wd=getNextWeekDates(),dayIdx=WEEK_ORDER.indexOf(day);
-    var dateStr=dayIdx>=0?wd[dayIdx]:'';
-    var weekend=dateStr?isWeekendOrHoliday(dateStr):(day===0||day===6);
+    var weekend=isWeekendOrHoliday(schedDate);
     var dayTypeLabel=weekend?'주말':'평일';
     var manualDB=parseInt(document.getElementById('manualDB').value);
     var isManual=manualDB>0;
@@ -1362,7 +1362,7 @@ function calcSchedule(){
         });
     }
     var adCost=parseInt(document.getElementById('adCost').value)||0;
-    return{type:type,day:day,hour:hour,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel,adCost:adCost,manualDB:isManual?manualDB:0};
+    return{type:type,day:day,hour:hour,schedDate:schedDate,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel,adCost:adCost,manualDB:isManual?manualDB:0};
 }
 function addSchedule(){
     var data=calcSchedule();if(!data)return;
@@ -1382,7 +1382,7 @@ function editSchedule(id){
     var s=schedules.find(function(x){return x.id===id;});if(!s)return;
     editingScheduleId=id;
     document.getElementById('schedType').value=s.type;
-    document.getElementById('schedDay').value=s.day;
+    document.getElementById('schedDate').value=s.schedDate||'';
     populateHourSelector();
     document.getElementById('schedHour').value=s.hour!==null?s.hour:'';
     DB_TYPES.forEach(function(dt){document.getElementById('pct_'+dt).value=s.pcts[dt]||0;});
@@ -1395,7 +1395,7 @@ function editSchedule(id){
     // 취소 버튼 표시
     document.getElementById('schedCancelBtn').style.display='';
     // 폼으로 스크롤
-    document.getElementById('schedType').scrollIntoView({behavior:'smooth',block:'center'});
+    document.getElementById('schedDate').scrollIntoView({behavior:'smooth',block:'center'});
 }
 function cancelEdit(){
     editingScheduleId=null;
@@ -1408,13 +1408,11 @@ function buildScheduleTooltips(type){
     var pdl=getPredDateLabels(),tips={};
     for(var i=0;i<7;i++)tips[i]=[];
     var dayCost={};for(var i=0;i<7;i++)dayCost[i]=0;
-    schedules.forEach(function(s){
+    getActiveSchedules().forEach(function(s){
         if(type&&s.type!==type)return;
-        var dd=getScheduleDistDay(s);
-        var idx=WEEK_ORDER.indexOf(dd);
-        if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;
+        var idx=getScheduleWeekIdx(s);
         if(idx===-1)return;
-        var dayLabel=pdl[WEEK_ORDER.indexOf(s.day)];
+        var dayLabel=pdl[idx];
         var bdParts=[];if(s.breakdown){DB_TYPES.forEach(function(dt){if(s.breakdown[dt]>0)bdParts.push(dt+s.breakdown[dt]);});}
         var tipText=dayLabel+' '+formatHour(s.hour)+' '+s.totalPredicted+'건';
         if(bdParts.length>1)tipText+=' ('+bdParts.join(' ')+')';
@@ -1429,15 +1427,13 @@ function buildScheduleTooltipsByDBType(schedType, dbType){
     var pdl=getPredDateLabels(),tips={};
     for(var i=0;i<7;i++)tips[i]=[];
     var dayCost={},dayTotal={};for(var i=0;i<7;i++){dayCost[i]=0;dayTotal[i]=0;}
-    schedules.forEach(function(s){
+    getActiveSchedules().forEach(function(s){
         if(schedType&&s.type!==schedType)return;
-        var dd=getScheduleDistDay(s);
-        var idx=WEEK_ORDER.indexOf(dd);
-        if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;
+        var idx=getScheduleWeekIdx(s);
         if(idx===-1)return;
         var v=s.breakdown&&s.breakdown[dbType]?s.breakdown[dbType]:0;
         if(v<=0)return;
-        var dayLabel=pdl[WEEK_ORDER.indexOf(s.day)];
+        var dayLabel=pdl[idx];
         var tipText=dayLabel+' '+dbType+' '+formatHour(s.hour)+' '+v+'건';
         if(s.adCost)tipText+=' | 광고비 '+s.adCost.toLocaleString()+'만';
         tips[idx].push(tipText);
@@ -1451,17 +1447,15 @@ function buildScheduleTooltipsByGroup(schedType, dbTypes){
     var pdl=getPredDateLabels(),tips={};
     for(var i=0;i<7;i++)tips[i]=[];
     var dayCost={},dayTotal={};for(var i=0;i<7;i++){dayCost[i]=0;dayTotal[i]=0;}
-    schedules.forEach(function(s){
+    getActiveSchedules().forEach(function(s){
         if(schedType&&s.type!==schedType)return;
-        var dd=getScheduleDistDay(s);
-        var idx=WEEK_ORDER.indexOf(dd);
-        if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;
+        var idx=getScheduleWeekIdx(s);
         if(idx===-1)return;
         var v=0;
         var parts=[];
         dbTypes.forEach(function(dt){var dv=s.breakdown&&s.breakdown[dt]?s.breakdown[dt]:0;v+=dv;if(dv>0)parts.push(dt+' '+dv);});
         if(v<=0)return;
-        var dayLabel=pdl[WEEK_ORDER.indexOf(s.day)];
+        var dayLabel=pdl[idx];
         var tipText=dayLabel+' '+formatHour(s.hour)+' '+v+'건'+(parts.length>1?' ('+parts.join(' ')+')':'');
         if(s.adCost)tipText+=' | 광고비 '+s.adCost.toLocaleString()+'만';
         tips[idx].push(tipText);
@@ -1474,30 +1468,35 @@ function buildScheduleTooltipsByGroup(schedType, dbTypes){
 
 function sortSchedules(){
     schedules.sort(function(a,b){
-        var ai=WEEK_ORDER.indexOf(a.day),bi=WEEK_ORDER.indexOf(b.day);
-        if(ai!==bi)return ai-bi;
+        if(a.schedDate!==b.schedDate)return(a.schedDate||'').localeCompare(b.schedDate||'');
         return(a.hour||0)-(b.hour||0);
     });
 }
 function saveSchedules(){idbPut('schedules',schedules);}
 function removeSchedule(id){if(editingScheduleId===id)cancelEdit();schedules=schedules.filter(function(s){return s.id!==id;});saveSchedules();updateScheduleUI();updateTotalPrediction();}
+function clearAllSchedules(){if(!schedules.length||!confirm('모든 스케줄을 삭제하시겠습니까?'))return;schedules=[];saveSchedules();updateScheduleUI();updateTotalPrediction();}
 function getScheduleDistDay(s){return(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR)?(s.day+1)%7:s.day;}
+function getScheduleDistDate(s){if(!s.schedDate)return null;if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR){var d=new Date(s.schedDate+'T00:00:00');d.setDate(d.getDate()+1);return formatDate(d);}return s.schedDate;}
+function getActiveSchedules(){var wd=getNextWeekDates();return schedules.filter(function(s){var dd=getScheduleDistDate(s);return dd&&wd.indexOf(dd)>=0;});}
+function getScheduleWeekIdx(s){var wd=getNextWeekDates();var dd=getScheduleDistDate(s);return dd?wd.indexOf(dd):-1;}
 function updateScheduleUI(){
-    var tb=document.querySelector('#specialPredTable tbody'),pdl=getPredDateLabels();
+    var tb=document.querySelector('#specialPredTable tbody');
     if(!schedules.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#999;">추가된 스케줄이 없습니다</td></tr>';return;}
+    var wd=getNextWeekDates();
     tb.innerHTML=schedules.map(function(s){
         var pp=[],dp=[];DB_TYPES.forEach(function(dt){if(s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');if(s.breakdown[dt]>0)dp.push(dt+' '+s.breakdown[dt]);});
         var manualTag=s.manualDB?'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">수동</span>':'';
-        var dayIdx=WEEK_ORDER.indexOf(s.day);
-        var dayLabel=dayIdx>=0?pdl[dayIdx]:DAY_NAMES[s.day];
+        var sd=s.schedDate?new Date(s.schedDate+'T00:00:00'):null;
+        var dateLabel=sd?((sd.getMonth()+1)+'/'+sd.getDate()+'('+DAY_NAMES[sd.getDay()]+')'):'미상';
         var dtBadge=s.dayType==='주말'?'<span style="display:inline-block;background:#fff3e0;color:#e65100;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">주말</span>':'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">평일</span>';
+        var isActive=s.schedDate&&wd.indexOf(getScheduleDistDate(s))>=0;
+        var activeBadge=isActive?'':'<span style="display:inline-block;background:#eee;color:#999;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">비활성</span>';
         var ps=pp.join(' / '),pr=s.totalPredicted+'건'+(dp.length>1?' ('+dp.join(' / ')+')':'');
-        var dd=getScheduleDistDay(s),sh=dd!==s.day;
-        var distIdx=WEEK_ORDER.indexOf(dd);
-        var distLabel=distIdx>=0?pdl[distIdx]:DAY_NAMES[dd];
-        if(sh)distLabel+=' <span style="color:#d84315;font-size:0.72rem;">(다음날)</span>';
-        return'<tr><td><span class="badge '+(s.type==='timeboard'?'badge-blue':'badge-orange')+'">'+(s.type==='timeboard'?'타임보드':'스페셜')+'</span></td>'
-            +'<td>'+dayLabel+dtBadge+'</td><td>'+formatHour(s.hour)+'</td><td style="font-size:0.8rem;">'+ps+'</td>'
+        var distDate=getScheduleDistDate(s);
+        var distLabel='';
+        if(distDate){var dd=new Date(distDate+'T00:00:00');distLabel=(dd.getMonth()+1)+'/'+dd.getDate()+'('+DAY_NAMES[dd.getDay()]+')';if(distDate!==s.schedDate)distLabel+=' <span style="color:#d84315;font-size:0.72rem;">(다음날)</span>';}
+        return'<tr style="'+(isActive?'':'opacity:0.5;')+'"><td><span class="badge '+(s.type==='timeboard'?'badge-blue':'badge-orange')+'">'+(s.type==='timeboard'?'타임보드':'스페셜')+'</span></td>'
+            +'<td>'+dateLabel+dtBadge+activeBadge+'</td><td>'+formatHour(s.hour)+'</td><td style="font-size:0.8rem;">'+ps+'</td>'
             +'<td class="num">'+pr+manualTag+'</td><td class="num">'+(s.adCost?s.adCost.toLocaleString()+'만':'-')+'</td><td>'+distLabel+'</td>'
             +'<td><span style="color:#1a237e;cursor:pointer;margin-right:8px;" onclick="editSchedule('+s.id+')">수정</span><span style="color:#e53935;cursor:pointer;" onclick="removeSchedule('+s.id+')">삭제</span></td></tr>';
     }).join('');
@@ -1601,7 +1600,7 @@ function updateTotalPrediction(){
     // Per-DB-type timeboard/special breakdown
     var tbByType={},spByType={};
     DB_TYPES.forEach(function(dt){tbByType[dt]=WEEK_ORDER.map(function(){return 0;});spByType[dt]=WEEK_ORDER.map(function(){return 0;});});
-    schedules.forEach(function(s){var dd=getScheduleDistDay(s),idx=WEEK_ORDER.indexOf(dd);if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;if(idx===-1)return;var tot=s.totalPredicted||0;if(s.type==='timeboard')tbD[idx]+=tot;else spD[idx]+=tot;if(s.breakdown){DB_TYPES.forEach(function(dt){var v=s.breakdown[dt]||0;if(s.type==='timeboard')tbByType[dt][idx]+=v;else spByType[dt][idx]+=v;});sc['영어'][idx]+=(s.breakdown['영어']||0);sc['제2외국어'][idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);sc['톡이즈'][idx]+=(s.breakdown['톡이즈']||0);}});
+    getActiveSchedules().forEach(function(s){var idx=getScheduleWeekIdx(s);if(idx===-1)return;var tot=s.totalPredicted||0;if(s.type==='timeboard')tbD[idx]+=tot;else spD[idx]+=tot;if(s.breakdown){DB_TYPES.forEach(function(dt){var v=s.breakdown[dt]||0;if(s.type==='timeboard')tbByType[dt][idx]+=v;else spByType[dt][idx]+=v;});sc['영어'][idx]+=(s.breakdown['영어']||0);sc['제2외국어'][idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);sc['톡이즈'][idx]+=(s.breakdown['톡이즈']||0);}});
     // Aggregate TB/SP by group
     var tbByGroup={'영어':tbByType['영어'],'제2외국어':WEEK_ORDER.map(function(_,i){return SEC_LANG_TYPES.reduce(function(s,dt){return s+tbByType[dt][i];},0);}),'톡이즈':tbByType['톡이즈']};
     var spByGroup={'영어':spByType['영어'],'제2외국어':WEEK_ORDER.map(function(_,i){return SEC_LANG_TYPES.reduce(function(s,dt){return s+spByType[dt][i];},0);}),'톡이즈':spByType['톡이즈']};
@@ -1681,7 +1680,7 @@ function updateTierPrediction(){
     var secDaily=WEEK_ORDER.map(function(d){return SEC_LANG_TYPES.reduce(function(s,dt){return s+da[dt][d];},0);});
     // Add schedule contributions
     var engSched=WEEK_ORDER.map(function(){return 0;}),secSched=WEEK_ORDER.map(function(){return 0;});
-    schedules.forEach(function(s){var dd=getScheduleDistDay(s),idx=WEEK_ORDER.indexOf(dd);if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;if(idx===-1)return;if(s.breakdown){engSched[idx]+=(s.breakdown['영어']||0);secSched[idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);}});
+    getActiveSchedules().forEach(function(s){var idx=getScheduleWeekIdx(s);if(idx===-1)return;if(s.breakdown){engSched[idx]+=(s.breakdown['영어']||0);secSched[idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);}});
     var engTotal=WEEK_ORDER.map(function(_,i){return engDaily[i]+engSched[i];});
     var secTotal=WEEK_ORDER.map(function(_,i){return secDaily[i]+secSched[i];});
 
@@ -1721,7 +1720,7 @@ function updateTierPrediction(){
     // 톡이즈
     var talkDaily=WEEK_ORDER.map(function(d){return da['톡이즈'][d];});
     var talkSched=WEEK_ORDER.map(function(){return 0;});
-    schedules.forEach(function(s){var dd=getScheduleDistDay(s),idx=WEEK_ORDER.indexOf(dd);if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR&&WEEK_ORDER.indexOf(s.day)===6)return;if(idx===-1)return;if(s.breakdown)talkSched[idx]+=(s.breakdown['톡이즈']||0);});
+    getActiveSchedules().forEach(function(s){var idx=getScheduleWeekIdx(s);if(idx===-1)return;if(s.breakdown)talkSched[idx]+=(s.breakdown['톡이즈']||0);});
     var talkTotal=WEEK_ORDER.map(function(_,i){return talkDaily[i]+talkSched[i];});
     var talkEffective=applyCarryover(talkTotal);
 
@@ -1883,7 +1882,7 @@ function updateShareTab(){
         var qh='<div class="quick-nav">';
         var dailyLabel=prefix==='brain-'?'일별 영어+제2외 예상':prefix==='talkiz-'?'일별 톡이즈 예상':'일별 종합 예상';
         qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-daily\')">'+dailyLabel+'</div>';
-        if(schedules.length&&prefix!=='talkiz-')qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-schedule\')">타임보드/스페셜 집행계획</div>';
+        if(getActiveSchedules().length&&prefix!=='talkiz-')qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-schedule\')">타임보드/스페셜 집행계획</div>';
         qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-media\')">매체별 예상 요약</div>';
         if(actualInflowData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-actual\')">실제 유입 분석</div>';
         var groupLabel=prefix==='talkiz-'?'톡이즈 1인 분배':'그룹별 1인 예상 분배';
@@ -1902,18 +1901,19 @@ function updateShareTab(){
         th+='<span><span class="tt-sp" style="display:inline-block;background:#e8f5e9;color:#2e7d32;padding:2px 6px;border-radius:6px;font-size:0.7rem;font-weight:700;">SP</span> 스페셜</span>';
         th+='<span style="color:#e53935;">--- 5PM 컷오프</span></div>';
         var grid={};
-        schedules.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=WEEK_ORDER.indexOf(s.day);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push({type:s.type,count:s.totalPredicted,breakdown:s.breakdown,dayType:s.dayType||'',adCost:s.adCost||0});});
+        var activeScheds=getActiveSchedules();
+        activeScheds.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=getScheduleWeekIdx(s);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push({type:s.type,count:s.totalPredicted,breakdown:s.breakdown,dayType:s.dayType||'',adCost:s.adCost||0});});
         th+='<table class="timetable"><thead><tr><th>시간</th>';pdl.forEach(function(l){th+='<th>'+l+'</th>';});th+='</tr></thead><tbody>';
         for(var hr=0;hr<=23;hr++){var isCutoff=hr===DIST_CUTOFF_HOUR;th+='<tr'+(isCutoff?' class="tt-cutoff"':'')+'>';th+='<td class="hour-cell">'+formatHour(hr)+(isCutoff?' <span style="color:var(--red);font-size:0.65rem;">CUT</span>':'')+'</td>';
             for(var di=0;di<7;di++){var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];if(!items.length){th+='<td class="tt-empty">-</td>';}else{var hasBoth=items.length>1;th+='<td'+(hasBoth?' class="tt-both"':'')+'>';items.forEach(function(it){var cls=it.type==='timeboard'?'tt-tb':'tt-sp';var label=it.type==='timeboard'?'TB':'SP';var tipAttr=it.adCost?' data-cost="광고비: '+it.adCost.toLocaleString()+'만원"':'';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+dt+' '+v+'</span>';});}else{th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+it.count+'</span>';}});th+='</td>';}}th+='</tr>';}
         th+='<tr style="font-weight:700;background:#f5f6fa;"><td class="hour-cell">합계</td>';
-        for(var di=0;di<7;di++){var dayTotal=0;schedules.forEach(function(s){if(WEEK_ORDER.indexOf(s.day)===di)dayTotal+=s.totalPredicted;});th+='<td>'+(dayTotal||'-')+'</td>';}
+        for(var di=0;di<7;di++){var dayTotal=0;activeScheds.forEach(function(s){if(getScheduleWeekIdx(s)===di)dayTotal+=s.totalPredicted;});th+='<td>'+(dayTotal||'-')+'</td>';}
         th+='</tr>';
         // 광고비 합계 행
-        var hasAnyCost=schedules.some(function(s){return s.adCost>0;});
+        var hasAnyCost=activeScheds.some(function(s){return s.adCost>0;});
         if(hasAnyCost){
             th+='<tr style="font-weight:600;background:#fff3e0;color:#e65100;"><td class="hour-cell">광고비</td>';
-            for(var di=0;di<7;di++){var dayCostSum=0;schedules.forEach(function(s){if(WEEK_ORDER.indexOf(s.day)===di&&s.adCost)dayCostSum+=s.adCost;});th+='<td>'+(dayCostSum?dayCostSum.toLocaleString()+'만':'-')+'</td>';}
+            for(var di=0;di<7;di++){var dayCostSum=0;activeScheds.forEach(function(s){if(getScheduleWeekIdx(s)===di&&s.adCost)dayCostSum+=s.adCost;});th+='<td>'+(dayCostSum?dayCostSum.toLocaleString()+'만':'-')+'</td>';}
             th+='</tr>';
         }
         th+='</tbody></table></div>';
@@ -2098,7 +2098,7 @@ function updateShareTab(){
     h+='</tbody></table></div>';
 
     // 타임보드/스페셜 시간표
-    if(schedules.length)h+=buildTimetable();
+    if(getActiveSchedules().length)h+=buildTimetable();
 
     // 매체별 예상 요약 + 연령대
     h+=buildMediaSummary([{t:'영어',d:['영어']},{t:'제2외국어',d:SEC_LANG_TYPES},{t:'톡이즈',d:['톡이즈']}],'total-');
@@ -2161,7 +2161,7 @@ function updateShareTab(){
     bh+=shareRow('총 합계',brainTotals,'row-total');
     bh+='</tbody></table></div>';
 
-    if(schedules.length)bh+=buildTimetable().replace('id="total-sec-schedule"','id="brain-sec-schedule"');
+    if(getActiveSchedules().length)bh+=buildTimetable().replace('id="total-sec-schedule"','id="brain-sec-schedule"');
     bh+=buildMediaSummary([{t:'영어',d:['영어']},{t:'제2외국어',d:SEC_LANG_TYPES}],'brain-');
     bh+=buildActualInflowSection('brain-');
     bh+=buildGroupDist('brain-');
@@ -2371,17 +2371,19 @@ function downloadPredExcel(){
     }
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tr),'차주 종합 예상');
 
-    // Sheet 3: 타임보드/스페셜 집행 계획
-    if(schedules.length){
-        var sr=[['타임보드/스페셜 집행 계획'],['유형','요일','시간','비중','예상 DB수','광고비(만원)','주말/평일','분배일']];
-        schedules.forEach(function(s){
+    // Sheet 3: 타임보드/스페셜 집행 계획 (활성 스케줄만)
+    var activeScheds=getActiveSchedules();
+    if(activeScheds.length){
+        var sr=[['타임보드/스페셜 집행 계획'],['유형','날짜','시간','비중','예상 DB수','광고비(만원)','주말/평일','분배일']];
+        activeScheds.forEach(function(s){
             var typeName=s.type==='timeboard'?'타임보드':'스페셜';
             var pp=[];DB_TYPES.forEach(function(dt){if(s.pcts&&s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');});
-            var dayIdx=WEEK_ORDER.indexOf(s.day);var dayLabel=dayIdx>=0?pdl[dayIdx]:DAY_NAMES[s.day];
-            var dd=getScheduleDistDay(s),distIdx=WEEK_ORDER.indexOf(dd);
-            var distLabel=distIdx>=0?pdl[distIdx]:DAY_NAMES[dd];
-            if(dd!==s.day)distLabel+=' (이월)';
-            sr.push([typeName,dayLabel,formatHour(s.hour),pp.join(' / '),s.totalPredicted,s.adCost||0,s.dayType||'',distLabel]);
+            var sd=s.schedDate?new Date(s.schedDate+'T00:00:00'):null;
+            var dateLabel=sd?((sd.getMonth()+1)+'/'+sd.getDate()+'('+DAY_NAMES[sd.getDay()]+')'):'';
+            var distDate=getScheduleDistDate(s);
+            var distLabel='';
+            if(distDate){var dd=new Date(distDate+'T00:00:00');distLabel=(dd.getMonth()+1)+'/'+dd.getDate()+'('+DAY_NAMES[dd.getDay()]+')';if(distDate!==s.schedDate)distLabel+=' (이월)';}
+            sr.push([typeName,dateLabel,formatHour(s.hour),pp.join(' / '),s.totalPredicted,s.adCost||0,s.dayType||'',distLabel]);
         });
         XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sr),'집행 계획');
     }
@@ -2605,6 +2607,9 @@ async function loadFromJSON(){
     await openIDB();
     await loadFromStorage();
     if(!allData.length){await loadFromJSON();}
+    // 스케줄 날짜 기본값: 차주 토요일
+    var nw=getNextWeekRange();var defDate=formatDate(nw.start);
+    document.getElementById('schedDate').value=defDate;
     updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
 })();
 
@@ -2620,7 +2625,7 @@ function updateFloatNav(){
     var items=[];
     var dailyLabel=prefix==='brain-'?'일별 영어+제2외 예상':prefix==='talkiz-'?'일별 톡이즈 예상':'일별 종합 예상';
     items.push({id:prefix+'sec-daily',label:dailyLabel});
-    if(schedules.length&&prefix!=='talkiz-')items.push({id:prefix+'sec-schedule',label:'타임보드/스페셜 집행계획'});
+    if(getActiveSchedules().length&&prefix!=='talkiz-')items.push({id:prefix+'sec-schedule',label:'타임보드/스페셜 집행계획'});
     items.push({id:prefix+'sec-media',label:'매체별 예상 요약'});
     if(actualInflowData.length)items.push({id:prefix+'sec-actual',label:'실제 유입 분석'});
     var groupLabel=prefix==='talkiz-'?'톡이즈 1인 분배':'그룹별 1인 예상 분배';
