@@ -1342,7 +1342,11 @@ function calcSchedule(){
     }else{
         // 자동 계산: allData 평균 기반
         var avg=getSpecialTimeAvgByTypeByDayType(type,weekend);
+        console.log('[스케줄 디버그] type='+type+', weekend='+weekend+', hour='+hour);
+        console.log('[스케줄 디버그] avg keys:', Object.keys(avg));
+        console.log('[스케줄 디버그] avg 전체:', JSON.stringify(avg));
         var hk=hour!==null?hour:'unknown',hd=avg[hk]||{};
+        console.log('[스케줄 디버그] hk='+hk+', hd:', JSON.stringify(hd));
         // 해당 시간대에 데이터가 없으면 전체 시간대 평균으로 폴백
         if(!hd.total&&Object.keys(avg).length>0){
             var sumTotal=0,sumByType={},cnt=0;
