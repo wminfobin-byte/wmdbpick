@@ -1140,13 +1140,10 @@ function isWeekendOrHoliday(dateStr){
 function extractPackage(mc){
     if(!mc)return'unknown';
     var c=mc.toLowerCase();
-    // naver_tb_ 또는 naver_sp_ 뒤의 부분에서 시간 제거
-    var m=c.match(/naver_(?:tb|sp)_(.+?)_?\d{1,2}(?:am|pm)$/i);
+    // naver_tb_ 또는 naver_sp_ 뒤의 첫 번째 세그먼트(브랜드명)만 추출
+    var m=c.match(/naver_(?:tb|sp)_([^_]+)/i);
     if(m)return m[1];
-    // 시간 없는 경우
-    var m2=c.match(/naver_(?:tb|sp)_(.+)$/i);
-    if(m2)return m2[1];
-    return'unknown';
+    return c.split('_')[0]||'unknown';
 }
 
 // 고유 패키지 목록 추출
