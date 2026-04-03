@@ -2494,6 +2494,22 @@ var GH_OWNER='wminfobin-byte',GH_REPO='wmdbpick',GH_PATH='data.json';
 function getGHToken(){return localStorage.getItem('gh_token')||'';}
 function setGHToken(t){localStorage.setItem('gh_token',t);}
 
+async function gzipCompress(str){
+    var enc=new TextEncoder();
+    var stream=new Blob([enc.encode(str)]).stream().pipeThrough(new CompressionStream('gzip'));
+    var buf=await new Response(stream).arrayBuffer();
+    var bytes=new Uint8Array(buf);
+    var binary='';for(var i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+async function gzipDecompress(b64){
+    var binary=atob(b64);
+    var bytes=new Uint8Array(binary.length);
+    for(var i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    var stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(stream).text();
+}
+
 async function saveToGitHub(){
     if(!allData.length){alert('저장할 데이터가 없습니다.');return;}
     var token=getGHToken();
@@ -2504,44 +2520,34 @@ async function saveToGitHub(){
     }
     var btn=document.getElementById('btnSaveServer');
     btn.textContent='저장 중...';btn.disabled=true;
-    var apiBase='https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO;
-    var headers={'Authorization':'token '+token,'Content-Type':'application/json'};
     try{
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
         var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,lastSyncTime:syncTs});
-        var content=btoa(unescape(encodeURIComponent(payload)));
-        // 1) Create blob
-        var blobResp=await fetch(apiBase+'/git/blobs',{method:'POST',headers:headers,body:JSON.stringify({content:content,encoding:'base64'})});
-        if(!blobResp.ok){var be=await blobResp.json();throw new Error(be.message||blobResp.status);}
-        var blobSha=(await blobResp.json()).sha;
-        // 2) Get latest commit SHA on main
-        var refResp=await fetch(apiBase+'/git/ref/heads/main',{headers:headers});
-        if(!refResp.ok)throw new Error('브랜치 정보를 가져올 수 없습니다.');
-        var latestCommitSha=(await refResp.json()).object.sha;
-        // 3) Get tree of that commit
-        var commitResp=await fetch(apiBase+'/git/commits/'+latestCommitSha,{headers:headers});
-        if(!commitResp.ok)throw new Error('커밋 정보를 가져올 수 없습니다.');
-        var baseTreeSha=(await commitResp.json()).tree.sha;
-        // 4) Create new tree with updated file
-        var treeResp=await fetch(apiBase+'/git/trees',{method:'POST',headers:headers,body:JSON.stringify({base_tree:baseTreeSha,tree:[{path:GH_PATH,mode:'100644',type:'blob',sha:blobSha}]})});
-        if(!treeResp.ok)throw new Error('트리 생성에 실패했습니다.');
-        var newTreeSha=(await treeResp.json()).sha;
-        // 5) Create commit
-        var newCommitResp=await fetch(apiBase+'/git/commits',{method:'POST',headers:headers,body:JSON.stringify({message:'data: '+new Date().toLocaleString('ko-KR'),tree:newTreeSha,parents:[latestCommitSha]})});
-        if(!newCommitResp.ok)throw new Error('커밋 생성에 실패했습니다.');
-        var newCommitSha=(await newCommitResp.json()).sha;
-        // 6) Update ref
-        var updateResp=await fetch(apiBase+'/git/refs/heads/main',{method:'PATCH',headers:headers,body:JSON.stringify({sha:newCommitSha})});
-        if(updateResp.ok){
+        var compressed=await gzipCompress(payload);
+        var wrapper=JSON.stringify({z:compressed});
+        var content=btoa(unescape(encodeURIComponent(wrapper)));
+        var sha='';
+        try{
+            var r=await fetch('https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_PATH,{headers:{'Authorization':'token '+token}});
+            if(r.ok){var j=await r.json();sha=j.sha;}
+        }catch(e){}
+        var body={message:'data: '+new Date().toLocaleString('ko-KR'),content:content};
+        if(sha)body.sha=sha;
+        var resp=await fetch('https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_PATH,{
+            method:'PUT',
+            headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
+            body:JSON.stringify(body)
+        });
+        if(resp.ok){
             updateLastSyncTime();
             btn.textContent='완료';btn.disabled=true;
             setTimeout(function(){btn.textContent='동기화';btn.disabled=false;},2000);
             return;
         }else{
-            var err=await updateResp.json();
-            if(updateResp.status===401){setGHToken('');alert('토큰이 유효하지 않습니다. 다시 시도해주세요.');}
-            else throw new Error(err.message||updateResp.status);
+            var err=await resp.json();
+            if(resp.status===401){setGHToken('');alert('토큰이 유효하지 않습니다. 다시 시도해주세요.');}
+            else alert('저장 실패: '+(err.message||resp.status));
         }
     }catch(e){alert('저장 오류: '+e.message);}
     btn.textContent='동기화';btn.disabled=false;
@@ -2571,7 +2577,9 @@ async function loadFromJSON(){
     try{
         var resp=await fetch('data.json?t='+Date.now());
         if(!resp.ok)return false;
-        var payload=await resp.json();
+        var raw=await resp.json();
+        var payload=raw;
+        if(raw.z){payload=JSON.parse(await gzipDecompress(raw.z));}
         if(payload.dbData&&payload.dbData.length){
             allData=payload.dbData.map(expandRecord);
             uploadedFiles=payload.dbFiles||[];
