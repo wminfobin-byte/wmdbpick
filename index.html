@@ -1246,8 +1246,11 @@ function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
         DB_TYPES.forEach(function(dt){
             var hd=countByTypeHourDate[dt][k];
             if(!hd){r[k][dt]=0;return;}
-            var dtSum=vd.reduce(function(s,ds){return s+(hd[ds]||0);},0);
-            r[k][dt]=Math.round(dtSum/vd.length);
+            // 해당 유형이 실제 집행된 날만 분모로 사용
+            var dtDates=vd.filter(function(ds){return hd[ds]>0;});
+            if(!dtDates.length){r[k][dt]=0;return;}
+            var dtSum=dtDates.reduce(function(s,ds){return s+hd[ds];},0);
+            r[k][dt]=Math.round(dtSum/dtDates.length);
         });
     });
     return r;
