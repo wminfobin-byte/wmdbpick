@@ -1207,56 +1207,48 @@ function getPackageTimeAvg(type,isWeekend,pkg){
     return r;
 }
 
-// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData 기준)
+// 주말/평일 구분된 타임보드/스페셜 시간별 평균 (allData 기준, DB유형별 독립 계산)
 function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
     var fn=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
     var overlap=getOverlapDateHours(type);
-    var datesByHour={};
-
-    // 1) allData에서 DB 수량 수집 (실제 DB 건수)
+    // DB유형별로 시간대×날짜별 건수 수집
+    var countByTypeHourDate={};
+    DB_TYPES.forEach(function(dt){countByTypeHourDate[dt]={};});
+    var totalByHourDate={};
     allData.filter(fn).forEach(function(d){
         if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
         var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
         if(isOverlap(overlap,d.dateStr,k))return;
-        if(!datesByHour[k])datesByHour[k]={};
-        if(!datesByHour[k][d.dateStr])datesByHour[k][d.dateStr]=0;
-        datesByHour[k][d.dateStr]++;
+        if(!totalByHourDate[k])totalByHourDate[k]={};
+        if(!totalByHourDate[k][d.dateStr])totalByHourDate[k][d.dateStr]=0;
+        totalByHourDate[k][d.dateStr]++;
+        var dt=d.dbType;
+        if(!countByTypeHourDate[dt])countByTypeHourDate[dt]={};
+        if(!countByTypeHourDate[dt][k])countByTypeHourDate[dt][k]={};
+        if(!countByTypeHourDate[dt][k][d.dateStr])countByTypeHourDate[dt][k][d.dateStr]=0;
+        countByTypeHourDate[dt][k][d.dateStr]++;
     });
-
-    // 날짜별 수량이 3 이하인 날은 노이즈로 간주하여 제외
-    var r={};Object.keys(datesByHour).forEach(function(k){
-        var allDates=Object.keys(datesByHour[k]);
-        var datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>3;});
-        // 유효 날짜가 없으면 데이터 있는 날짜만 사용 (0인 날 제외)
-        if(!datesWithData.length)datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>0;});
-        if(!datesWithData.length){r[k]={total:0};DB_TYPES.forEach(function(t){r[k][t]=0;});return;}
-        var validSum=datesWithData.reduce(function(s,ds){return s+datesByHour[k][ds];},0);
-        var n=datesWithData.length;
-        r[k]={total:Math.round(validSum/n)};
-        DB_TYPES.forEach(function(t){r[k][t]=0;});
+    // 시간대별 유효 날짜 판별 (전체 기준 3건 초과)
+    var validDates={};
+    Object.keys(totalByHourDate).forEach(function(k){
+        var allDates=Object.keys(totalByHourDate[k]);
+        var wd=allDates.filter(function(ds){return totalByHourDate[k][ds]>3;});
+        if(!wd.length)wd=allDates.filter(function(ds){return totalByHourDate[k][ds]>0;});
+        validDates[k]=wd;
     });
-
-    // allData에서 DB종류별 비율 계산 후 total에 적용 (유효 날짜만)
-    var fn2=type==='timeboard'?function(d){return d.isTimeboard;}:function(d){return d.isSpecial;};
-    var typeRatio={};
-    allData.filter(fn2).forEach(function(d){
-        if(isWeekendOrHoliday(d.dateStr)!==isWeekend)return;
-        var k=d.broadcastHour!==null?d.broadcastHour:'unknown';
-        if(isOverlap(overlap,d.dateStr,k))return;
-        if(!r[k])return;
-        var allDates=Object.keys(datesByHour[k]||{});
-        var datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>3;});
-        if(!datesWithData.length)datesWithData=allDates.filter(function(ds){return datesByHour[k][ds]>0;});
-        if(datesWithData.indexOf(d.dateStr)===-1)return;
-        if(!typeRatio[k]){typeRatio[k]={};DB_TYPES.forEach(function(t){typeRatio[k][t]=0;});typeRatio[k]._sum=0;}
-        typeRatio[k][d.dbType]++;typeRatio[k]._sum++;
-    });
-    Object.keys(r).forEach(function(k){
-        if(typeRatio[k]&&typeRatio[k]._sum>0){
-            DB_TYPES.forEach(function(t){r[k][t]=Math.round(r[k].total*typeRatio[k][t]/typeRatio[k]._sum);});
-        }else{
-            r[k]['영어']=r[k].total;
-        }
+    // 시간대별 DB유형별 독립 평균 계산
+    var r={};
+    Object.keys(totalByHourDate).forEach(function(k){
+        var vd=validDates[k];
+        if(!vd||!vd.length){r[k]={total:0};DB_TYPES.forEach(function(t){r[k][t]=0;});return;}
+        var totalSum=vd.reduce(function(s,ds){return s+totalByHourDate[k][ds];},0);
+        r[k]={total:Math.round(totalSum/vd.length)};
+        DB_TYPES.forEach(function(dt){
+            var hd=countByTypeHourDate[dt][k];
+            if(!hd){r[k][dt]=0;return;}
+            var dtSum=vd.reduce(function(s,ds){return s+(hd[ds]||0);},0);
+            r[k][dt]=Math.round(dtSum/vd.length);
+        });
     });
     return r;
 }
