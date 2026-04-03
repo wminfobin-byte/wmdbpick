@@ -1812,17 +1812,15 @@ function updateTierPrediction(){
 function applyCarryover(dailyVals){
     var result=dailyVals.slice();
     var carry=0;
-    var consecutiveOff=0;
     for(var i=0;i<7;i++){
         if(!workingDayToggle[i]){
-            consecutiveOff++;
-            // 연속 비분배일 2일 이상이면 해당 일 예상을 50%로 감소
-            if(consecutiveOff>=2) result[i]=Math.round(result[i]*0.5);
-            result[i]+=carry;
-            carry=result[i];result[i]=0;
+            // 비분배일: 광고 축소로 유입 50% 감소, 다음 영업일로 이월
+            result[i]=Math.round(result[i]*0.5);
+            carry+=result[i];
+            result[i]=0;
         }else{
             result[i]+=carry;
-            carry=0;consecutiveOff=0;
+            carry=0;
         }
     }
     return result;
