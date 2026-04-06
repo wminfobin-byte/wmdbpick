@@ -367,6 +367,12 @@
                     <div class="tier-grid" id="tierWeightInputs"></div>
                     <p class="section-sub">그룹별 계열 기준 (1인당)</p>
                     <div class="group-config" id="groupConfigDisplay"></div>
+                    <p class="section-sub">제2외국어 계열별 비중 (%)</p>
+                    <div style="display:flex;gap:16px;margin-bottom:10px;align-items:center;">
+                        <label style="font-size:0.82rem;">상위 (0~2계열) <input type="number" id="secWeightUpper" value="46" min="0" max="100" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="syncSecWeights('upper');saveTierConfig()">%</label>
+                        <label style="font-size:0.82rem;">하위 (3~5계열) <input type="number" id="secWeightLower" value="54" min="0" max="100" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="syncSecWeights('lower');saveTierConfig()">%</label>
+                        <span id="secWeightTotal" style="font-weight:600;font-size:0.82rem;color:#2e7d32;">합계: 100%</span>
+                    </div>
                     <p class="section-sub">제2외국어 분배 기준 (1인당)</p>
                     <div style="display:flex;gap:16px;margin-bottom:10px;">
                         <label style="font-size:0.82rem;">상위 <input type="number" id="secBasisUpper" value="20" min="0" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="saveTierConfig()"></label>
@@ -588,7 +594,8 @@ var tierConfig = {
         'E':{tiers:[1,2,3,4],basis:[4,11,22,3]},
         'N':{tiers:[3,4,5],basis:[4,12,34]}
     },
-    secUpper:20, secLower:25
+    secUpper:20, secLower:25,
+    secWeightUpper:46, secWeightLower:54
 };
 
 // ======================== Storage ========================
@@ -659,10 +666,22 @@ async function saveAttendance(){
         await idbPut('attendMonth',attendanceMonth);
     }catch(e){}
 }
+function syncSecWeights(changed){
+    var u=parseFloat(document.getElementById('secWeightUpper').value)||0;
+    var l=parseFloat(document.getElementById('secWeightLower').value)||0;
+    if(changed==='upper')document.getElementById('secWeightLower').value=(100-u);
+    else document.getElementById('secWeightUpper').value=(100-l);
+    var total=(parseFloat(document.getElementById('secWeightUpper').value)||0)+(parseFloat(document.getElementById('secWeightLower').value)||0);
+    var span=document.getElementById('secWeightTotal');
+    span.textContent='합계: '+total+'%';
+    span.style.color=total===100?'#2e7d32':'#e53935';
+}
 function saveTierConfig(){
     tierConfig.weights=TIERS.map(function(_,i){return parseFloat(document.getElementById('tw_'+i).value)||0;});
     tierConfig.secUpper=parseInt(document.getElementById('secBasisUpper').value)||0;
     tierConfig.secLower=parseInt(document.getElementById('secBasisLower').value)||0;
+    tierConfig.secWeightUpper=parseFloat(document.getElementById('secWeightUpper').value)||0;
+    tierConfig.secWeightLower=parseFloat(document.getElementById('secWeightLower').value)||0;
     Object.keys(tierConfig.groups).forEach(function(g){
         tierConfig.groups[g].basis=tierConfig.groups[g].tiers.map(function(t){
             var el=document.getElementById('gb_'+g+'_'+t);
@@ -1161,7 +1180,8 @@ function buildActualGroupDist(acS,todayStr){
     if(secTotal>0){
         var secStaff=getWorkingSecStaffForDate(todayStr)||0;
         if(secStaff>0){
-            var secUpper=Math.round(secTotal*46/100),secLower=Math.round(secTotal*54/100);
+            var secWU=tierConfig.secWeightUpper||46,secWL=tierConfig.secWeightLower||54;
+            var secUpper=Math.round(secTotal*secWU/100),secLower=Math.round(secTotal*secWL/100);
             var secPPUpper=Math.round(secUpper/secStaff),secPPLower=Math.round(secLower/secStaff);
             gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
             gh+='<tr><td rowspan="2"><strong style="color:#2e7d32;">제2외국어</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+secStaff+'명</span></td>';
@@ -1774,6 +1794,8 @@ function renderTierConfigUI(){
     wc.innerHTML=TIERS.map(function(t,i){return'<div class="tier-input"><label>'+t+'</label><input type="number" id="tw_'+i+'" value="'+tierConfig.weights[i]+'" step="0.01" onchange="saveTierConfig()"></div>';}).join('');
     document.getElementById('secBasisUpper').value=tierConfig.secUpper;
     document.getElementById('secBasisLower').value=tierConfig.secLower;
+    document.getElementById('secWeightUpper').value=tierConfig.secWeightUpper;
+    document.getElementById('secWeightLower').value=tierConfig.secWeightLower;
     var gc=document.getElementById('groupConfigDisplay');
     gc.innerHTML=Object.keys(tierConfig.groups).map(function(g){var cfg=tierConfig.groups[g];return'<div class="group-card"><h4>'+g+'그룹 ('+cfg.tiers.map(function(t){return TIERS[t];}).join(', ')+')</h4>'+cfg.tiers.map(function(t,i){return'<div class="tier-row"><span>'+TIERS[t]+'</span><input type="number" id="gb_'+g+'_'+t+'" value="'+cfg.basis[i]+'" min="0" style="width:45px;padding:2px;border:1px solid #ddd;border-radius:3px;text-align:center;" onchange="saveTierConfig()"></div>';}).join('')+'</div>';}).join('');
 }
@@ -1812,8 +1834,8 @@ function updateTierPrediction(){
     tierPredHtml+='<tr class="highlight-row"><td>합계</td><td class="num">100%</td>'+engEffective.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+engEffective.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
     tierPredHtml+='</tbody></table></div></div>';
 
-    // 제2외국어 상위 46% / 하위 54% (고정)
-    var secUpperPct=46,secLowerPct=54;
+    // 제2외국어 상위/하위 비중
+    var secUpperPct=tierConfig.secWeightUpper||46,secLowerPct=tierConfig.secWeightLower||54;
     tierPredHtml+='<div><p class="section-sub">제2외국어</p><div class="table-wrap"><table><thead><tr><th>구분</th><th class="num">비중</th>';
     pdl.forEach(function(l){tierPredHtml+='<th class="num">'+l+'</th>';});
     tierPredHtml+='<th class="num">합계</th></tr></thead><tbody>';
@@ -2139,7 +2161,7 @@ function updateShareTab(){
         th+='<tr class="row-total"><td>합계</td><td>100%</td>'+engEff.map(function(v){return'<td>'+v.toLocaleString()+'</td>';}).join('')+'<td>'+engEff.reduce(function(a,b){return a+b;},0).toLocaleString()+'</td></tr>';
         th+='</tbody></table>';
         // 제2외국어
-        var _secUP=46,_secLP=54;
+        var _secUP=tierConfig.secWeightUpper||46,_secLP=tierConfig.secWeightLower||54;
         var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
         var _secUV=secEff.map(function(v){return Math.round(v*_secUP/100);});
         var _secLV=secEff.map(function(v){return Math.round(v*_secLP/100);});
