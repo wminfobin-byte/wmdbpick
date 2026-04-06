@@ -744,7 +744,7 @@ function parseMediaTime(mc){if(!mc)return null;var m=mc.match(/(\d{1,2})(AM|PM)$
 function formatHour(h){if(h===null||h===undefined)return'미상';var p=h<12?'AM':'PM';var d=h===0?12:h>12?h-12:h;return d+p;}
 
 // Attendance
-function classifyStaffDB(p){var d=(p.department||'').trim();if(d.includes('제2외국어'))return'제2외국어';if(d.includes('톡이즈'))return'톡이즈';if(d.includes('뇌새김')){var g=(p.group||'').trim();if(g.includes('톡이즈'))return'톡이즈';if(g.includes('제2')||g.includes('2외')||g.includes('일본')||g.includes('중국'))return'제2외국어';return'영어';}return'영어';}
+function classifyStaffDB(p){var d=(p.department||'').trim();if(d.includes('제2외국어'))return'제2외국어';if(d.includes('톡이즈'))return'톡이즈';if(d.includes('뇌새김')){var g=(p.group||'').trim();if(g.includes('톡이즈'))return'톡이즈';if(g.includes('제2')||g.includes('2외')||g.includes('일본')||g.includes('중국'))return'제2외국어';var sg=classifyStaffGroup(p);if(sg)return'영어';}return null;}
 function classifyStaffGroup(p){var g=(p.group||'').trim().toUpperCase();if(g.includes('W'))return'W';if(g.includes('E'))return'E';if(g.includes('N')||g.includes('A'))return'N';return null;}
 function isWorkingStatus(v){if(v===null||v===undefined)return false;var s=String(v).trim();if(s===''||s==='-')return false;if(/^(연|휴|공|병|경|무|파견|교육|출장)/.test(s))return false;return true;}
 // 근태 월이 다르면 해당 카테고리 전원 출근으로 가정
