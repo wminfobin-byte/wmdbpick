@@ -991,11 +991,16 @@ function getPredictionForDates(dates){
     if(!lastPredData||!lastPredData.regularData)return null;
     var rd=lastPredData.regularData;
     var weekDates=getNextWeekDates();
-    var result={byLang:{'영어':0,'제2외국어':0,'톡이즈':0},total:0};
+    var result={byLang:{'영어':0,'제2외국어':0,'톡이즈':0},total:0,byLangMedia:{'영어':{},'제2외국어':{},'톡이즈':{}}};
     var tbG=lastPredData.tbByGroup||{},spG=lastPredData.spByGroup||{};
+    // 매체별 예상 수량 계산
+    var engMedia=getSmartMediaDOWTable('영어');
+    var secMediaAll=getSmartMediaDOWTableForGroup(SEC_LANG_TYPES);
+    var talkMedia=getSmartMediaDOWTable('톡이즈');
     dates.forEach(function(dateStr){
         var idx=weekDates.indexOf(dateStr);
         if(idx===-1)return;
+        var dow=WEEK_ORDER[idx];
         var eng=(rd['영어']||[])[idx]||0;
         var sec=(rd['제2외국어']||[])[idx]||0;
         var talk=(rd['톡이즈']||[])[idx]||0;
@@ -1006,6 +1011,15 @@ function getPredictionForDates(dates){
         result.byLang['제2외국어']+=sec;
         result.byLang['톡이즈']+=talk;
         result.total+=eng+sec+talk;
+        // 매체별 누적
+        MEDIA_TYPES.forEach(function(m){
+            if(!result.byLangMedia['영어'][m])result.byLangMedia['영어'][m]=0;
+            if(!result.byLangMedia['제2외국어'][m])result.byLangMedia['제2외국어'][m]=0;
+            if(!result.byLangMedia['톡이즈'][m])result.byLangMedia['톡이즈'][m]=0;
+            result.byLangMedia['영어'][m]+=(engMedia[m]||{})[dow]||0;
+            result.byLangMedia['제2외국어'][m]+=(secMediaAll[m]||{})[dow]||0;
+            result.byLangMedia['톡이즈'][m]+=(talkMedia[m]||{})[dow]||0;
+        });
     });
     return result;
 }
@@ -1056,20 +1070,33 @@ function buildActualInflowTables(prefix,showCompare){
     ah+='</tbody></table>';
     // 매체별 수량
     ah+='<h4>매체별 수량</h4>';
-    if(showCompare&&pred){
-        // 매체별도 언어 기준 예상/실제 비교 추가
-        ah+='<table class="share-table"><thead><tr><th>매체</th><th>실제 영어</th><th>실제 제2외국어</th><th>실제 톡이즈</th><th>실제 합계</th></tr></thead><tbody>';
+    if(showCompare&&pred&&pred.byLangMedia){
+        ah+='<table class="share-table"><thead><tr><th rowspan="2">매체</th><th colspan="3" style="text-align:center;background:#e3f2fd;">영어</th><th colspan="3" style="text-align:center;background:#e8f5e9;">제2외국어</th><th colspan="3" style="text-align:center;background:#f3e5f5;">톡이즈</th><th rowspan="2">합계</th></tr>';
+        ah+='<tr><th style="background:#e3f2fd;">실제</th><th style="background:#e3f2fd;">예상</th><th style="background:#e3f2fd;">차이</th><th style="background:#e8f5e9;">실제</th><th style="background:#e8f5e9;">예상</th><th style="background:#e8f5e9;">차이</th><th style="background:#f3e5f5;">실제</th><th style="background:#f3e5f5;">예상</th><th style="background:#f3e5f5;">차이</th></tr></thead><tbody>';
+        var allMedias=Object.keys(acS.byMedia).sort(function(a,b){return acS.byMedia[b]-acS.byMedia[a];});
+        var predMediaTotal={'영어':0,'제2외국어':0,'톡이즈':0};
+        allMedias.forEach(function(m){
+            var ae=acS.byLangMedia['영어'][m]||0,pe=pred.byLangMedia['영어'][m]||0,de=ae-pe;
+            var as2=acS.byLangMedia['제2외국어'][m]||0,ps=pred.byLangMedia['제2외국어'][m]||0,ds=as2-ps;
+            var at=acS.byLangMedia['톡이즈'][m]||0,pt=pred.byLangMedia['톡이즈'][m]||0,dt2=at-pt;
+            predMediaTotal['영어']+=pe;predMediaTotal['제2외국어']+=ps;predMediaTotal['톡이즈']+=pt;
+            function diffCell(v){var cls=v>=0?'diff-positive':'diff-negative';return'<td class="'+cls+'">'+(v>=0?'+':'')+v+'</td>';}
+            ah+='<tr><td>'+m+'</td><td>'+ae+'</td><td>'+pe+'</td>'+diffCell(de)+'<td>'+as2+'</td><td>'+ps+'</td>'+diffCell(ds)+'<td>'+at+'</td><td>'+pt+'</td>'+diffCell(dt2)+'<td><strong>'+acS.byMedia[m]+'</strong></td></tr>';
+        });
+        var tde=acS.byLang['영어']-predMediaTotal['영어'],tds=acS.byLang['제2외국어']-predMediaTotal['제2외국어'],tdt=acS.byLang['톡이즈']-predMediaTotal['톡이즈'];
+        function diffCellT(v){var cls=v>=0?'diff-positive':'diff-negative';return'<td class="'+cls+'">'+(v>=0?'+':'')+v+'</td>';}
+        ah+='<tr class="row-total"><td>합계</td><td>'+acS.byLang['영어']+'</td><td>'+predMediaTotal['영어']+'</td>'+diffCellT(tde)+'<td>'+acS.byLang['제2외국어']+'</td><td>'+predMediaTotal['제2외국어']+'</td>'+diffCellT(tds)+'<td>'+acS.byLang['톡이즈']+'</td><td>'+predMediaTotal['톡이즈']+'</td>'+diffCellT(tdt)+'<td><strong>'+acS.total+'</strong></td></tr>';
     }else{
         ah+='<table class="share-table"><thead><tr><th>매체</th><th>영어</th><th>제2외국어</th><th>톡이즈</th><th>합계</th></tr></thead><tbody>';
+        var allMedias=Object.keys(acS.byMedia).sort(function(a,b){return acS.byMedia[b]-acS.byMedia[a];});
+        allMedias.forEach(function(m){
+            var e=acS.byLangMedia['영어'][m]||0;
+            var s=acS.byLangMedia['제2외국어'][m]||0;
+            var t=acS.byLangMedia['톡이즈'][m]||0;
+            ah+='<tr><td>'+m+'</td><td>'+e+'</td><td>'+s+'</td><td>'+t+'</td><td><strong>'+acS.byMedia[m]+'</strong></td></tr>';
+        });
+        ah+='<tr class="row-total"><td>합계</td><td>'+acS.byLang['영어']+'</td><td>'+acS.byLang['제2외국어']+'</td><td>'+acS.byLang['톡이즈']+'</td><td><strong>'+acS.total+'</strong></td></tr>';
     }
-    var allMedias=Object.keys(acS.byMedia).sort(function(a,b){return acS.byMedia[b]-acS.byMedia[a];});
-    allMedias.forEach(function(m){
-        var e=acS.byLangMedia['영어'][m]||0;
-        var s=acS.byLangMedia['제2외국어'][m]||0;
-        var t=acS.byLangMedia['톡이즈'][m]||0;
-        ah+='<tr><td>'+m+'</td><td>'+e+'</td><td>'+s+'</td><td>'+t+'</td><td><strong>'+acS.byMedia[m]+'</strong></td></tr>';
-    });
-    ah+='<tr class="row-total"><td>합계</td><td>'+acS.byLang['영어']+'</td><td>'+acS.byLang['제2외국어']+'</td><td>'+acS.byLang['톡이즈']+'</td><td><strong>'+acS.total+'</strong></td></tr>';
     ah+='</tbody></table>';
     // 1인당 분배
     if(attendanceData.length){
@@ -1083,8 +1110,78 @@ function buildActualInflowTables(prefix,showCompare){
             ah+='<tr><td>'+cat+'</td><td>'+cnt+'</td><td>'+(staff||'-')+'</td><td><strong>'+pp+'</strong></td></tr>';
         });
         ah+='</tbody></table>';
+        // 그룹별 실제 분배 테이블
+        ah+=buildActualGroupDist(acS,todayStr);
     }
     return ah;
+}
+
+function buildActualGroupDist(acS,todayStr){
+    var gh='';
+    var engTotal=acS.byLang['영어']||0;
+    var secTotal=acS.byLang['제2외국어']||0;
+    var talkTotal=acS.byLang['톡이즈']||0;
+    // 영어 그룹별 분배
+    if(engTotal>0){
+        var totalStaff=0;
+        Object.keys(tierConfig.groups).forEach(function(g){
+            var s=getWorkingStaffByGroupForDate(todayStr,g)||0;
+            totalStaff+=s;
+        });
+        if(totalStaff>0){
+            gh+='<h4>그룹별 실제 유입 분배</h4>';
+            var wSum=tierConfig.weights.reduce(function(a,b){return a+b;},0)||1;
+            var shareBasisSum={};
+            Object.keys(tierConfig.groups).forEach(function(g){
+                shareBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;
+            });
+            gh+='<table class="share-table"><thead><tr><th>그룹</th><th>계열</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            Object.keys(tierConfig.groups).forEach(function(g){
+                var cfg=tierConfig.groups[g];
+                var myStaff=getWorkingStaffByGroupForDate(todayStr,g)||0;
+                var perPersonTotal=myStaff>0?Math.round(engTotal/totalStaff):0;
+                var grpTotal=0,isFirst=true;
+                cfg.tiers.forEach(function(ti,bi){
+                    var basisRatio=cfg.basis[bi]/shareBasisSum[g];
+                    var pp=Math.round(perPersonTotal*basisRatio);
+                    grpTotal+=pp;
+                    gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'그룹</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+myStaff+'명</span>':'')+'</td>';
+                    gh+='<td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>';
+                    gh+='<td>'+(isFirst?Math.round(engTotal*myStaff/totalStaff):'')+'</td>';
+                    gh+='<td>'+(isFirst?myStaff:'')+'</td>';
+                    gh+='<td>'+(pp||'-')+'</td></tr>';
+                    isFirst=false;
+                });
+                gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td><td></td><td></td><td style="color:#1a237e;">'+grpTotal+'</td></tr>';
+            });
+            gh+='</tbody></table>';
+        }
+    }
+    // 제2외국어 분배
+    if(secTotal>0){
+        var secStaff=getWorkingSecStaffForDate(todayStr)||0;
+        if(secStaff>0){
+            var secUpper=Math.round(secTotal*46/100),secLower=Math.round(secTotal*54/100);
+            var secPPUpper=Math.round(secUpper/secStaff),secPPLower=Math.round(secLower/secStaff);
+            gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            gh+='<tr><td rowspan="2"><strong style="color:#2e7d32;">제2외국어</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+secStaff+'명</span></td>';
+            gh+='<td style="color:#666;font-size:0.82rem;">상위 (0~2계열)</td><td>'+secUpper+'</td><td>'+secStaff+'</td><td>'+secPPUpper+'</td></tr>';
+            gh+='<tr><td style="color:#666;font-size:0.82rem;">하위 (3~5계열)</td><td>'+secLower+'</td><td>'+secStaff+'</td><td>'+secPPLower+'</td></tr>';
+            gh+='<tr style="background:#e8f5e9;font-weight:700;"><td></td><td style="color:#2e7d32;">합계</td><td>'+secTotal+'</td><td>'+secStaff+'</td><td style="color:#2e7d32;">'+Math.round(secTotal/secStaff)+'</td></tr>';
+            gh+='</tbody></table>';
+        }
+    }
+    // 톡이즈 분배
+    if(talkTotal>0){
+        var talkStaff=getWorkingStaffForDate(todayStr,'톡이즈')||0;
+        if(talkStaff>0){
+            gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            gh+='<tr><td><strong style="color:#7b1fa2;">톡이즈</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+talkStaff+'명</span></td>';
+            gh+='<td style="color:#666;font-size:0.82rem;">1인 분배</td><td>'+talkTotal+'</td><td>'+talkStaff+'</td><td><strong>'+Math.round(talkTotal/talkStaff)+'</strong></td></tr>';
+            gh+='</tbody></table>';
+        }
+    }
+    return gh;
 }
 
 function toggleActualCompare(prefix){
@@ -1892,10 +1989,10 @@ function updateShareTab(){
         qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-daily\')">'+dailyLabel+'</div>';
         if(getActiveSchedules().length&&prefix!=='talkiz-')qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-schedule\')">타임보드/스페셜 집행계획</div>';
         qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-media\')">매체별 예상 요약</div>';
-        if(actualInflowData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-actual\')">실제 유입 분석</div>';
         var groupLabel=prefix==='talkiz-'?'톡이즈 1인 분배':'그룹별 1인 예상 분배';
         if(attendanceData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-group\')">'+groupLabel+'</div>';
         if(prefix!=='talkiz-'&&lastPredData.tierDailyEng)qh+='<div class="quick-btn" onclick="scrollToSection(\'share-sec-tier\')">계열별 예상 유입</div>';
+        if(actualInflowData.length)qh+='<div class="quick-btn" onclick="scrollToSection(\''+prefix+'sec-actual\')">실제 유입 분석</div>';
         qh+='</div>';
         return qh;
     }
@@ -2111,14 +2208,14 @@ function updateShareTab(){
     // 매체별 예상 요약 + 연령대
     h+=buildMediaSummary([{t:'영어',d:['영어']},{t:'제2외국어',d:SEC_LANG_TYPES},{t:'톡이즈',d:['톡이즈']}],'total-');
 
-    // 실제 유입 분석
-    h+=buildActualInflowSection('total-');
-
     // 그룹별 1인 분배
     h+=buildGroupDist('total-');
 
     // 계열별 예상 유입
     h+=buildTierSection();
+
+    // 실제 유입 분석
+    h+=buildActualInflowSection('total-');
 
     h+='<div class="share-footer">Generated by WM DB 유입 예상 대시보드 | AI 추세 분석 기반 예측</div>';
     document.getElementById('shareBody').innerHTML=h;
@@ -2171,9 +2268,9 @@ function updateShareTab(){
 
     if(getActiveSchedules().length)bh+=buildTimetable().replace('id="total-sec-schedule"','id="brain-sec-schedule"');
     bh+=buildMediaSummary([{t:'영어',d:['영어']},{t:'제2외국어',d:SEC_LANG_TYPES}],'brain-');
-    bh+=buildActualInflowSection('brain-');
     bh+=buildGroupDist('brain-');
     bh+=buildTierSection();
+    bh+=buildActualInflowSection('brain-');
     bh+='<div class="share-footer">Generated by WM DB 유입 예상 대시보드 | 영어 + 제2외국어</div>';
     document.getElementById('shareBodyBrain').innerHTML=bh;
 
@@ -2640,10 +2737,10 @@ function updateFloatNav(){
     items.push({id:prefix+'sec-daily',label:dailyLabel});
     if(getActiveSchedules().length&&prefix!=='talkiz-')items.push({id:prefix+'sec-schedule',label:'타임보드/스페셜 집행계획'});
     items.push({id:prefix+'sec-media',label:'매체별 예상 요약'});
-    if(actualInflowData.length)items.push({id:prefix+'sec-actual',label:'실제 유입 분석'});
     var groupLabel=prefix==='talkiz-'?'톡이즈 1인 분배':'그룹별 1인 예상 분배';
     if(attendanceData.length)items.push({id:prefix+'sec-group',label:groupLabel});
     if(prefix!=='talkiz-'&&lastPredData&&lastPredData.tierDailyEng)items.push({id:'share-sec-tier',label:'계열별 예상 유입'});
+    if(actualInflowData.length)items.push({id:prefix+'sec-actual',label:'실제 유입 분석'});
     var h=items.map(function(it){return'<a onclick="floatNavTo(\''+it.id+'\')">'+it.label+'</a>';}).join('');
     menu.innerHTML=h;
 }
