@@ -1686,7 +1686,7 @@ function buildPredSection(title,dts){
     if(!hasTableData(tAll))return'';
     var h='<div class="section"><h3>'+title+' - 차주 매체별 예상</h3>';
     var bh='',am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
-    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=tAM[m][d];am[i]+=v;return v;});if(vs.reduce(function(a,b){return a+b;},0)>0)bh+=buildPredRow(m,vs,false);});
+    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=tAM[m][d];am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+rt+'</strong></td></tr>';});
     bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+v+'</strong></td>';}).join('')+'<td class="num"><strong>'+am.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
     MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){pm[i]+=tPM[m][d];});});
     bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+(v||'-')+'</td>';}).join('')+'<td class="num"><strong>'+pm.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
