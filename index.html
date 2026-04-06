@@ -1150,28 +1150,29 @@ function buildActualGroupDist(acS,todayStr){
         if(totalStaff>0){
             gh+='<h4>그룹별 실제 유입 분배</h4>';
             var wSum=tierConfig.weights.reduce(function(a,b){return a+b;},0)||1;
+            // 계열별 유입 수량 계산
+            var tierInflow=TIERS.map(function(_,i){return Math.round(engTotal*tierConfig.weights[i]/wSum);});
             var shareBasisSum={};
             Object.keys(tierConfig.groups).forEach(function(g){
                 shareBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;
             });
-            gh+='<table class="share-table"><thead><tr><th>그룹</th><th>계열</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            gh+='<table class="share-table"><thead><tr><th>그룹</th><th>계열</th><th>유입 수량</th><th>1인당</th></tr></thead><tbody>';
             Object.keys(tierConfig.groups).forEach(function(g){
                 var cfg=tierConfig.groups[g];
                 var myStaff=getWorkingStaffByGroupForDate(todayStr,g)||0;
                 var perPersonTotal=myStaff>0?Math.round(engTotal/totalStaff):0;
-                var grpTotal=0,isFirst=true;
+                var grpTotal=0,grpInflow=0,isFirst=true;
                 cfg.tiers.forEach(function(ti,bi){
                     var basisRatio=cfg.basis[bi]/shareBasisSum[g];
                     var pp=Math.round(perPersonTotal*basisRatio);
-                    grpTotal+=pp;
+                    grpTotal+=pp;grpInflow+=tierInflow[ti];
                     gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'그룹</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+myStaff+'명</span>':'')+'</td>';
                     gh+='<td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>';
-                    gh+='<td>'+(isFirst?Math.round(engTotal*myStaff/totalStaff):'')+'</td>';
-                    gh+='<td>'+(isFirst?myStaff:'')+'</td>';
+                    gh+='<td>'+tierInflow[ti]+'</td>';
                     gh+='<td>'+(pp||'-')+'</td></tr>';
                     isFirst=false;
                 });
-                gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td><td></td><td></td><td style="color:#1a237e;">'+grpTotal+'</td></tr>';
+                gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td><td style="color:#1a237e;">'+grpInflow+'</td><td style="color:#1a237e;">'+grpTotal+'</td></tr>';
             });
             gh+='</tbody></table>';
         }
@@ -1183,11 +1184,11 @@ function buildActualGroupDist(acS,todayStr){
             var secWU=tierConfig.secWeightUpper||46,secWL=tierConfig.secWeightLower||54;
             var secUpper=Math.round(secTotal*secWU/100),secLower=Math.round(secTotal*secWL/100);
             var secPPUpper=Math.round(secUpper/secStaff),secPPLower=Math.round(secLower/secStaff);
-            gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>유입 수량</th><th>1인당</th></tr></thead><tbody>';
             gh+='<tr><td rowspan="2"><strong style="color:#2e7d32;">제2외국어</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+secStaff+'명</span></td>';
-            gh+='<td style="color:#666;font-size:0.82rem;">상위 (0~2계열)</td><td>'+secUpper+'</td><td>'+secStaff+'</td><td>'+secPPUpper+'</td></tr>';
-            gh+='<tr><td style="color:#666;font-size:0.82rem;">하위 (3~5계열)</td><td>'+secLower+'</td><td>'+secStaff+'</td><td>'+secPPLower+'</td></tr>';
-            gh+='<tr style="background:#e8f5e9;font-weight:700;"><td></td><td style="color:#2e7d32;">합계</td><td>'+secTotal+'</td><td>'+secStaff+'</td><td style="color:#2e7d32;">'+Math.round(secTotal/secStaff)+'</td></tr>';
+            gh+='<td>상위 (0~2계열)</td><td>'+secUpper+'</td><td>'+secPPUpper+'</td></tr>';
+            gh+='<tr><td>하위 (3~5계열)</td><td>'+secLower+'</td><td>'+secPPLower+'</td></tr>';
+            gh+='<tr style="background:#e8f5e9;font-weight:700;"><td></td><td style="color:#2e7d32;">합계</td><td style="color:#2e7d32;">'+secTotal+'</td><td style="color:#2e7d32;">'+Math.round(secTotal/secStaff)+'</td></tr>';
             gh+='</tbody></table>';
         }
     }
@@ -1195,9 +1196,9 @@ function buildActualGroupDist(acS,todayStr){
     if(talkTotal>0){
         var talkStaff=getWorkingStaffForDate(todayStr,'톡이즈')||0;
         if(talkStaff>0){
-            gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>실제 유입</th><th>근무 인원</th><th>1인당</th></tr></thead><tbody>';
+            gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>그룹</th><th>구분</th><th>유입 수량</th><th>1인당</th></tr></thead><tbody>';
             gh+='<tr><td><strong style="color:#7b1fa2;">톡이즈</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+talkStaff+'명</span></td>';
-            gh+='<td style="color:#666;font-size:0.82rem;">1인 분배</td><td>'+talkTotal+'</td><td>'+talkStaff+'</td><td><strong>'+Math.round(talkTotal/talkStaff)+'</strong></td></tr>';
+            gh+='<td>1인 분배</td><td>'+talkTotal+'</td><td><strong>'+Math.round(talkTotal/talkStaff)+'</strong></td></tr>';
             gh+='</tbody></table>';
         }
     }
