@@ -1466,9 +1466,19 @@ function buildScheduleTooltipsByGroup(schedType, dbTypes){
 }
 
 function sortSchedules(){
+    var now=new Date();
+    var nowDate=formatDate(now);
+    var nowHour=now.getHours();
     schedules.sort(function(a,b){
-        if(a.schedDate!==b.schedDate)return(a.schedDate||'').localeCompare(b.schedDate||'');
-        return(a.hour||0)-(b.hour||0);
+        var aDate=a.schedDate||'';
+        var bDate=b.schedDate||'';
+        var aHour=a.hour!=null?a.hour:0;
+        var bHour=b.hour!=null?b.hour:0;
+        var aPast=aDate<nowDate||(aDate===nowDate&&aHour<nowHour);
+        var bPast=bDate<nowDate||(bDate===nowDate&&bHour<nowHour);
+        if(aPast!==bPast)return aPast?1:-1;
+        if(aDate!==bDate)return aDate.localeCompare(bDate);
+        return aHour-bHour;
     });
 }
 function saveSchedules(){idbPut('schedules',schedules);}
@@ -2608,6 +2618,11 @@ async function loadFromJSON(){
     // 스케줄 날짜 기본값: 차주 토요일
     var nw=getNextWeekRange();var defDate=formatDate(nw.start);
     document.getElementById('schedDate').value=defDate;
+    // Enter키로 스케줄 추가
+    ['pct_영어','pct_일본어','pct_중국어','pct_스페인어','pct_프랑스어','pct_톡이즈','manualDB','adCost'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addSchedule();}});
+    });
     updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
 })();
 
