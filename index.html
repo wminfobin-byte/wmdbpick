@@ -1478,6 +1478,7 @@ function getScheduleDistDay(s){return(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR)?(
 function getScheduleDistDate(s){if(!s.schedDate)return null;if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR){var d=new Date(s.schedDate+'T00:00:00');d.setDate(d.getDate()+1);return formatDate(d);}return s.schedDate;}
 function getActiveSchedules(){var wd=getNextWeekDates();return schedules.filter(function(s){var dd=getScheduleDistDate(s);return dd&&wd.indexOf(dd)>=0;});}
 function getScheduleWeekIdx(s){var wd=getNextWeekDates();var dd=getScheduleDistDate(s);return dd?wd.indexOf(dd):-1;}
+function getScheduleOrigWeekIdx(s){var wd=getNextWeekDates();return s.schedDate?wd.indexOf(s.schedDate):-1;}
 function updateScheduleUI(){
     var tb=document.querySelector('#specialPredTable tbody');
     if(!schedules.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#999;">추가된 스케줄이 없습니다</td></tr>';return;}
@@ -1899,7 +1900,7 @@ function updateShareTab(){
         th+='<span style="color:#e53935;">--- 5PM 컷오프</span></div>';
         var grid={};
         var activeScheds=getActiveSchedules();
-        activeScheds.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=getScheduleWeekIdx(s);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push({type:s.type,count:s.totalPredicted,breakdown:s.breakdown,dayType:s.dayType||'',adCost:s.adCost||0});});
+        activeScheds.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=getScheduleOrigWeekIdx(s);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push({type:s.type,count:s.totalPredicted,breakdown:s.breakdown,dayType:s.dayType||'',adCost:s.adCost||0});});
         th+='<table class="timetable"><thead><tr><th>시간</th>';pdl.forEach(function(l){th+='<th>'+l+'</th>';});th+='</tr></thead><tbody>';
         for(var hr=0;hr<=23;hr++){var isCutoff=hr===DIST_CUTOFF_HOUR;th+='<tr'+(isCutoff?' class="tt-cutoff"':'')+'>';th+='<td class="hour-cell">'+formatHour(hr)+(isCutoff?' <span style="color:var(--red);font-size:0.65rem;">CUT</span>':'')+'</td>';
             for(var di=0;di<7;di++){var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];if(!items.length){th+='<td class="tt-empty">-</td>';}else{var hasBoth=items.length>1;th+='<td'+(hasBoth?' class="tt-both"':'')+'>';items.forEach(function(it){var cls=it.type==='timeboard'?'tt-tb':'tt-sp';var label=it.type==='timeboard'?'TB':'SP';var tipAttr=it.adCost?' data-cost="광고비: '+it.adCost.toLocaleString()+'만원"':'';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+dt+' '+v+'</span>';});}else{th+='<span class="'+cls+'"'+tipAttr+'>'+label+' '+it.count+'</span>';}});th+='</td>';}}th+='</tr>';}
