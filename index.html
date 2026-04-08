@@ -72,6 +72,11 @@
         .badge-orange{background:var(--green-bg);color:var(--green)}
         .empty-state{text-align:center;padding:80px 20px;color:var(--slate-light)}
         .empty-state p{margin-top:12px;font-size:0.9rem}
+        .init-loading{text-align:center;padding:80px 20px;color:var(--slate-light)}
+        .init-loading p{margin-top:16px;font-size:0.9rem;color:var(--slate)}
+        .init-loading-pct{font-size:1.4rem;font-weight:700;color:var(--blue);margin-top:12px}
+        .init-loading-bar{width:240px;height:6px;background:var(--gray-200);border-radius:3px;margin:12px auto 0;overflow:hidden}
+        .init-loading-bar-fill{width:0%;height:100%;background:linear-gradient(90deg,var(--blue),var(--blue-light));border-radius:3px}
         .btn{padding:8px 18px;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:var(--font);transition:all 0.15s}
         .btn-danger{background:var(--red-bg);color:var(--red);border:1px solid #fecaca}
         .btn-danger:hover{background:#fee2e2}
@@ -310,7 +315,13 @@
                 </div>
             </div>
         </div>
-        <div class="empty-state" id="analysisEmpty">
+        <div class="init-loading" id="analysisLoading">
+            <div style="font-size:3rem;">&#128200;</div>
+            <p>데이터를 불러오는 중...</p>
+            <div class="init-loading-pct" id="analysisLoadingPct">0%</div>
+            <div class="init-loading-bar"><div class="init-loading-bar-fill" id="analysisLoadingBar"></div></div>
+        </div>
+        <div class="empty-state" id="analysisEmpty" style="display:none;">
             <div style="font-size:3rem;">&#128200;</div>
             <p>우측 상단의 [데이터 업로드] 버튼으로 DB 파일을 올려주세요</p>
         </div>
@@ -406,7 +417,13 @@
                 <div class="chart-box" style="margin-top:16px;"><h3>차주 예상 유입 추이</h3><canvas id="predChart"></canvas></div>
             </div>
         </div>
-        <div class="empty-state" id="predictionEmpty">
+        <div class="init-loading" id="predictionLoading">
+            <div style="font-size:3rem;">&#128302;</div>
+            <p>데이터를 불러오는 중...</p>
+            <div class="init-loading-pct" id="predictionLoadingPct">0%</div>
+            <div class="init-loading-bar"><div class="init-loading-bar-fill" id="predictionLoadingBar"></div></div>
+        </div>
+        <div class="empty-state" id="predictionEmpty" style="display:none;">
             <div style="font-size:3rem;">&#128302;</div>
             <p>데이터를 업로드하면 차주 예상이 표시됩니다</p>
         </div>
@@ -430,7 +447,13 @@
                 <div class="share-subtab-content" id="sharetab-talkiz"><div id="shareBodyTalkiz"></div></div>
             </div>
         </div>
-        <div class="empty-state" id="shareEmpty">
+        <div class="init-loading" id="shareLoading">
+            <div style="font-size:3rem;">&#128203;</div>
+            <p>데이터를 불러오는 중...</p>
+            <div class="init-loading-pct" id="shareLoadingPct">0%</div>
+            <div class="init-loading-bar"><div class="init-loading-bar-fill" id="shareLoadingBar"></div></div>
+        </div>
+        <div class="empty-state" id="shareEmpty" style="display:none;">
             <div style="font-size:3rem;">&#128203;</div>
             <p>차주 예상 데이터가 있어야 공유 페이지를 생성할 수 있습니다</p>
         </div>
@@ -690,21 +713,27 @@ function saveTierConfig(){
     });
     idbPut('tierConfig',tierConfig);
 }
-async function loadFromStorage(){
+async function loadFromStorage(onProgress){
     try{
-        var r=await idbGet('dbData'),f=await idbGet('dbFiles');
+        var r=await idbGet('dbData');
+        if(onProgress)await onProgress(30);
+        var f=await idbGet('dbFiles');
         if(r&&r.length)allData=r.map(expandRecord);
         if(f)uploadedFiles=f;
+        if(onProgress)await onProgress(45);
     }catch(e){allData=[];uploadedFiles=[];}
     try{
         var a=await idbGet('attendData'),af=await idbGet('attendFiles'),am=await idbGet('attendMonth');
         if(a)attendanceData=a;if(af)attendanceFiles=af;if(am)attendanceMonth=am;
     }catch(e){}
+    if(onProgress)await onProgress(55);
     try{var t=await idbGet('tierConfig');if(t)tierConfig=t;}catch(e){}
     try{var w=await idbGet('workingDays');if(w)workingDayToggle=w;}catch(e){}
     try{var sc=await idbGet('schedules');if(sc)schedules=sc;}catch(e){}
+    if(onProgress)await onProgress(65);
     try{var tb2=await idbGet('tbspData');if(tb2)tbspData=tb2;var tf=await idbGet('tbspFiles');if(tf)tbspFiles=tf;}catch(e){}
     try{var ai=await idbGet('actualInflowData');if(ai)actualInflowData=ai;var aif=await idbGet('actualInflowFiles');if(aif)actualInflowFiles=aif;}catch(e){}
+    if(onProgress)await onProgress(75);
     // Migrate from localStorage if IndexedDB is empty but localStorage has data
     if(!allData.length){
         try{
@@ -1638,6 +1667,9 @@ function updateScheduleUI(){
 function updateAll(){
     var has=allData.length>0;
     document.getElementById('btnSaveServer').style.display=(has&&isLoggedIn)?'':'none';
+    document.getElementById('analysisLoading').style.display='none';
+    document.getElementById('predictionLoading').style.display='none';
+    document.getElementById('shareLoading').style.display='none';
     document.getElementById('analysisContent').style.display=has?'block':'none';
     document.getElementById('analysisEmpty').style.display=has?'none':'block';
     document.getElementById('predictionContent').style.display=has?'block':'none';
@@ -1646,7 +1678,7 @@ function updateAll(){
     document.getElementById('shareEmpty').style.display=has?'none':'block';
     updateHeaderInfo();renderTierConfigUI();
     if(!has)return;
-    updateCharts();updateAnalysisTables();updatePrediction();
+    setTimeout(function(){updateCharts();updateAnalysisTables();updatePrediction();},0);
 }
 function updateHeaderInfo(){var el=document.getElementById('headerInfo');if(!allData.length){el.textContent='';return;}var ds={};allData.forEach(function(d){ds[d.dateStr]=true;});var info=allData.length.toLocaleString()+'건 | '+Object.keys(ds).length+'일';if(attendanceData.length)info+=' | 근태 '+attendanceMonth;el.textContent=info;}
 
@@ -2733,12 +2765,29 @@ async function loadFromJSON(){
 }
 
 // ======================== Init ========================
+function setInitProgress(pct){
+    return new Promise(function(resolve){
+        var ids=['analysis','prediction','share'];
+        ids.forEach(function(id){
+            var bar=document.getElementById(id+'LoadingBar');
+            var txt=document.getElementById(id+'LoadingPct');
+            if(bar)bar.style.width=pct+'%';
+            if(txt)txt.textContent=pct+'%';
+        });
+        requestAnimationFrame(function(){resolve();});
+    });
+}
 (async function(){
+    await setInitProgress(5);
     checkSession();
     applyAuthUI();
+    await setInitProgress(15);
     await openIDB();
-    await loadFromStorage();
+    await setInitProgress(20);
+    await loadFromStorage(setInitProgress);
+    await setInitProgress(80);
     if(!allData.length){await loadFromJSON();}
+    await setInitProgress(90);
     // 스케줄 날짜 기본값: 차주 토요일
     var nw=getNextWeekRange();var defDate=formatDate(nw.start);
     document.getElementById('schedDate').value=defDate;
@@ -2747,6 +2796,7 @@ async function loadFromJSON(){
         var el=document.getElementById(id);
         if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addSchedule();}});
     });
+    await setInitProgress(100);
     updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
 })();
 
