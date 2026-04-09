@@ -76,7 +76,7 @@
         .init-loading p{margin-top:16px;font-size:0.9rem;color:var(--slate)}
         .init-loading-pct{font-size:1.4rem;font-weight:700;color:var(--blue);margin-top:12px}
         .init-loading-bar{width:240px;height:6px;background:var(--gray-200);border-radius:3px;margin:12px auto 0;overflow:hidden}
-        .init-loading-bar-fill{width:0%;height:100%;background:linear-gradient(90deg,var(--blue),var(--blue-light));border-radius:3px}
+        .init-loading-bar-fill{width:0%;height:100%;background:linear-gradient(90deg,var(--blue),var(--blue-light));border-radius:3px;transition:width 0.4s ease}
         .btn{padding:8px 18px;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:var(--font);transition:all 0.15s}
         .btn-danger{background:var(--red-bg);color:var(--red);border:1px solid #fecaca}
         .btn-danger:hover{background:#fee2e2}
@@ -2797,6 +2797,7 @@ function setInitProgress(pct){
         if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addSchedule();}});
     });
     await setInitProgress(100);
+    await new Promise(function(resolve){setTimeout(resolve,500);});
     updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
 })();
 
