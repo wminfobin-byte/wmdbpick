@@ -1667,18 +1667,39 @@ function updateScheduleUI(){
 function updateAll(){
     var has=allData.length>0;
     document.getElementById('btnSaveServer').style.display=(has&&isLoggedIn)?'':'none';
-    document.getElementById('analysisLoading').style.display='none';
-    document.getElementById('predictionLoading').style.display='none';
-    document.getElementById('shareLoading').style.display='none';
-    document.getElementById('analysisContent').style.display=has?'block':'none';
-    document.getElementById('analysisEmpty').style.display=has?'none':'block';
-    document.getElementById('predictionContent').style.display=has?'block':'none';
-    document.getElementById('predictionEmpty').style.display=has?'none':'block';
-    document.getElementById('shareContent').style.display=has?'block':'none';
-    document.getElementById('shareEmpty').style.display=has?'none':'block';
+    if(!has){
+        document.getElementById('analysisLoading').style.display='none';
+        document.getElementById('predictionLoading').style.display='none';
+        document.getElementById('shareLoading').style.display='none';
+        document.getElementById('analysisContent').style.display='none';
+        document.getElementById('analysisEmpty').style.display='block';
+        document.getElementById('predictionContent').style.display='none';
+        document.getElementById('predictionEmpty').style.display='block';
+        document.getElementById('shareContent').style.display='none';
+        document.getElementById('shareEmpty').style.display='block';
+        updateHeaderInfo();renderTierConfigUI();
+        return;
+    }
+    // 콘텐츠를 보이지 않게 배치 (Chart.js가 캔버스 크기를 잡을 수 있도록 display:block 유지)
+    ['analysisContent','predictionContent','shareContent'].forEach(function(id){
+        var el=document.getElementById(id);el.style.display='block';el.style.visibility='hidden';
+    });
     updateHeaderInfo();renderTierConfigUI();
-    if(!has)return;
-    setTimeout(function(){updateCharts();updateAnalysisTables();updatePrediction();},0);
+    setTimeout(function(){
+        updateCharts();updateAnalysisTables();updatePrediction();
+        // 차트 렌더링 완료 후 로딩 숨기고 콘텐츠 표시
+        requestAnimationFrame(function(){
+            document.getElementById('analysisLoading').style.display='none';
+            document.getElementById('predictionLoading').style.display='none';
+            document.getElementById('shareLoading').style.display='none';
+            document.getElementById('analysisEmpty').style.display='none';
+            document.getElementById('predictionEmpty').style.display='none';
+            document.getElementById('shareEmpty').style.display='none';
+            ['analysisContent','predictionContent','shareContent'].forEach(function(id){
+                document.getElementById(id).style.visibility='';
+            });
+        });
+    },0);
 }
 function updateHeaderInfo(){var el=document.getElementById('headerInfo');if(!allData.length){el.textContent='';return;}var ds={};allData.forEach(function(d){ds[d.dateStr]=true;});var info=allData.length.toLocaleString()+'건 | '+Object.keys(ds).length+'일';if(attendanceData.length)info+=' | 근태 '+attendanceMonth;el.textContent=info;}
 
