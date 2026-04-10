@@ -1049,11 +1049,10 @@ function getPredictionForDates(dates){
     var secMediaAll=getSmartMediaDOWTableForGroup(SEC_LANG_TYPES);
     var talkMedia=getSmartMediaDOWTable('톡이즈');
     [{tbl:engMedia,dts:['영어']},{tbl:secMediaAll,dts:SEC_LANG_TYPES},{tbl:talkMedia,dts:['톡이즈']}].forEach(function(g){
-        var rawArr=WEEK_ORDER.map(function(d){return g.dts.reduce(function(s,dt){return s+(pfDa[dt]?pfDa[dt][d]:0);},0);});
-        var tgtArr=applyCarryover(rawArr);
-        WEEK_ORDER.forEach(function(d,i){
+        WEEK_ORDER.forEach(function(d){
+            var tgt=g.dts.reduce(function(s,dt){return s+(pfDa[dt]?pfDa[dt][d]:0);},0);
             var raw=0;MEDIA_TYPES.forEach(function(m){raw+=g.tbl[m][d];});
-            var ratio=raw?tgtArr[i]/raw:0;
+            var ratio=raw?tgt/raw:0;
             MEDIA_TYPES.forEach(function(m){g.tbl[m][d]=round5(g.tbl[m][d]*ratio);});
         });
     });
@@ -1749,10 +1748,9 @@ function buildPredSection(title,dts){
     var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
     var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
     if(!hasTableData(tAll))return'';
-    // 통합 예측 기준 스케일링: 캐리오버 적용된 종합 예상과 일치시킴
+    // 통합 예측 기준 스케일링: 매체별 합산 → 통합 예측 총량에 맞춤 (캐리오버 미적용 = 유입 예상)
     var da=getSmartDOWAverageByType();
-    var rawTarget=WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(da[dt]?da[dt][d]:0);},0);});
-    var target=applyCarryover(rawTarget);
+    var target=WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(da[dt]?da[dt][d]:0);},0);});
     WEEK_ORDER.forEach(function(d,i){
         var rawAM=0,rawPM=0;MEDIA_TYPES.forEach(function(m){rawAM+=tAM[m][d];rawPM+=tPM[m][d];});
         var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
@@ -2129,7 +2127,7 @@ function updateShareTab(){
             var tAll=item.d.length>1?getSmartMediaDOWTableForGroup(item.d):getSmartMediaDOWTable(item.d[0]);
             if(!hasTableData(tAll))return;
             // 통합 예측 기준 스케일링
-            var shTarget=applyCarryover(WEEK_ORDER.map(function(d){return item.d.reduce(function(s,dt){return s+(shDa[dt]?shDa[dt][d]:0);},0);}));
+            var shTarget=WEEK_ORDER.map(function(d){return item.d.reduce(function(s,dt){return s+(shDa[dt]?shDa[dt][d]:0);},0);});
             WEEK_ORDER.forEach(function(d,i){
                 var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
                 var ratio=rawAll?shTarget[i]/rawAll:0;
@@ -2556,8 +2554,8 @@ function downloadPredExcel(){
         var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
         var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
         if(!hasTableData(tAll))return;
-        // 통합 예측 기준 스케일링 (캐리오버 적용)
-        var xlTarget=applyCarryover(WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(xlDa[dt]?xlDa[dt][d]:0);},0);}));
+        // 통합 예측 기준 스케일링 (캐리오버 미적용 = 유입 예상)
+        var xlTarget=WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(xlDa[dt]?xlDa[dt][d]:0);},0);});
         WEEK_ORDER.forEach(function(d,i){
             var rawAM=0,rawPM=0;MEDIA_TYPES.forEach(function(m){rawAM+=tAM[m][d];rawPM+=tPM[m][d];});
             var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
