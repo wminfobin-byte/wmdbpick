@@ -1733,11 +1733,18 @@ function makeTH(firstCol,labels){return'<thead><tr><th>'+firstCol+'</th>'+labels
 function PTH(){return makeTH('매체',getPredDateLabels());}
 function ATHCOL(){return makeTH('매체',WEEK_LABELS);} // analysis용 (일반 요일)
 
-// 매체별 예상 합산 → 일별 총량 (유일한 예측 소스)
+// 매체별 예상 합산 → 일별 총량 (유일한 예측 소스, 매체별 테이블 총 합계와 동일)
 function getMediaDOWTotal(dts){
     dts=Array.isArray(dts)?dts:[dts];
+    var tAM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오전'):getSmartMediaDOWTableByPeriod(dts[0],'오전');
+    var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
     var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
-    return WEEK_ORDER.map(function(d){var s=0;MEDIA_TYPES.forEach(function(m){s+=tAll[m][d];});return s;});
+    return WEEK_ORDER.map(function(d,i){
+        var s=0;
+        if(!workingDayToggle[i]){MEDIA_TYPES.forEach(function(m){s+=tAll[m][d];});}
+        else{MEDIA_TYPES.forEach(function(m){s+=tAM[m][d]+tPM[m][d];});}
+        return s;
+    });
 }
 
 function buildPredSection(title,dts){
