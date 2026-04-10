@@ -2005,9 +2005,16 @@ function applyCarryover(dailyVals){
     var carry=0;
     for(var i=0;i<7;i++){
         if(!workingDayToggle[i]){
-            // 비분배일: 광고 축소로 유입 50% 감소, 다음 영업일로 이월
-            result[i]=Math.round(result[i]*0.5);
-            carry+=result[i];
+            // 연속 OFF일 여부 확인 (앞뒤 중 하나라도 OFF면 연속)
+            var consecutive=(i>0&&!workingDayToggle[i-1])||(i<6&&!workingDayToggle[i+1]);
+            if(consecutive){
+                // 연속 OFF: 광고 축소로 유입 50% 감소
+                result[i]=Math.round(result[i]*0.5);
+                carry+=result[i];
+            }else{
+                // 단독 OFF: 100% 이월
+                carry+=result[i];
+            }
             result[i]=0;
         }else{
             result[i]+=carry;
