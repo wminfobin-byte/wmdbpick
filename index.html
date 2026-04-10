@@ -1849,8 +1849,9 @@ function updateTotalPrediction(){
         var wd=getNextWeekDates();
         rows+='<tr><td colspan="9" style="background:#f3e5f5;padding:6px 12px;font-weight:600;font-size:0.85rem;color:#7b1fa2;">1인 분배 예상 (근태 기반)</td></tr>';
         ['영어','제2외국어','톡이즈'].forEach(function(cat){
-            var cr=rd[cat],cs=sc[cat];
-            var pp=WEEK_ORDER.map(function(d,i){var t=cr[i]+cs[i],s=getWorkingStaffForDate(wd[i],cat);return(s===null||s===0)?'-':Math.round(t/s);});
+            // 1인 분배는 carryover 적용 (OFF일 DB는 다음 ON일에 분배)
+            var cr=applyCarryover(rd[cat].map(function(v,i){return v+sc[cat][i];}));
+            var pp=WEEK_ORDER.map(function(d,i){var t=cr[i],s=getWorkingStaffForDate(wd[i],cat);return(s===null||s===0)?'-':Math.round(t/s);});
             rows+='<tr class="per-person-row"><td>'+cat+' 1인</td>'+pp.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num">-</td></tr>';
         });
     }
