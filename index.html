@@ -2539,12 +2539,10 @@ function downloadPredExcel(){
         activeScheds.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=getScheduleOrigWeekIdx(s);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push(s);});
         var dayTotals=WEEK_ORDER.map(function(){return 0;}),dayCosts=WEEK_ORDER.map(function(){return 0;});
         for(var hr=0;hr<=23;hr++){
-            var hasRow=false;for(var di=0;di<7;di++){if(grid[hr]&&grid[hr][di])hasRow=true;}
-            if(!hasRow)continue;
             var row=[formatHour(hr)+(hr===DIST_CUTOFF_HOUR?' [CUT]':'')];
             for(var di=0;di<7;di++){
                 var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];
-                if(!items.length){row.push('-');}
+                if(!items.length){row.push('');}
                 else{var parts=[];items.forEach(function(it){var label=it.type==='timeboard'?'TB':'SP';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)parts.push(label+' '+dt+' '+v);});}else{parts.push(label+' '+it.totalPredicted);}dayTotals[di]+=it.totalPredicted;if(it.adCost)dayCosts[di]+=it.adCost;});row.push(parts.join(' / '));}
             }
             pr.push(row);
