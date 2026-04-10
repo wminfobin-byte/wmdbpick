@@ -1788,12 +1788,12 @@ function updateTotalPrediction(){
     var pdl=getPredDateLabels();
     document.getElementById('totalPredHead').innerHTML='<tr><th>구분</th>'+pdl.map(function(l){return'<th class="num">'+l+'</th>';}).join('')+'<th class="num">합계</th></tr>';
     var tb=document.querySelector('#totalPredTable tbody');
-    // 매체별 예상 합산을 base로 사용 (유일한 예측 소스, carryover 미적용)
+    // 매체별 예상 합산 → carryover 적용 (종합/계열별/1인분배 공통 base)
     var rd={};
-    rd['영어']=getMediaDOWTotal('영어');
-    rd['제2외국어']=getMediaDOWTotal(SEC_LANG_TYPES);
-    rd['톡이즈']=getMediaDOWTotal('톡이즈');
-    SEC_LANG_TYPES.forEach(function(dt){rd[dt]=getMediaDOWTotal(dt);});
+    rd['영어']=applyCarryover(getMediaDOWTotal('영어'));
+    rd['제2외국어']=applyCarryover(getMediaDOWTotal(SEC_LANG_TYPES));
+    rd['톡이즈']=applyCarryover(getMediaDOWTotal('톡이즈'));
+    SEC_LANG_TYPES.forEach(function(dt){rd[dt]=applyCarryover(getMediaDOWTotal(dt));});
     var tbD=WEEK_ORDER.map(function(){return 0;}),spD=WEEK_ORDER.map(function(){return 0;});
     var sc={'영어':WEEK_ORDER.map(function(){return 0;}),'제2외국어':WEEK_ORDER.map(function(){return 0;}),'톡이즈':WEEK_ORDER.map(function(){return 0;})};
     // Per-DB-type timeboard/special breakdown
