@@ -2530,6 +2530,30 @@ function downloadPredExcel(){
         var tv=WEEK_ORDER.map(function(_,i){return am[i]+pm[i];});
         pr.push(['총 합계'].concat(tv).concat([tv.reduce(function(a,b){return a+b;},0)]));pr.push([]);
     });
+    // 타임보드/스페셜 시간표 (시간×요일 격자)
+    var activeScheds=getActiveSchedules();
+    if(activeScheds.length){
+        pr.push(['타임보드 / 스페셜 집행 계획']);
+        var ttHdr=['시간'].concat(pdl);pr.push(ttHdr);
+        var grid={};
+        activeScheds.forEach(function(s){var hr=s.hour!==null?s.hour:0;var di=getScheduleOrigWeekIdx(s);if(di===-1)return;if(!grid[hr])grid[hr]={};if(!grid[hr][di])grid[hr][di]=[];grid[hr][di].push(s);});
+        var dayTotals=WEEK_ORDER.map(function(){return 0;}),dayCosts=WEEK_ORDER.map(function(){return 0;});
+        for(var hr=0;hr<=23;hr++){
+            var hasRow=false;for(var di=0;di<7;di++){if(grid[hr]&&grid[hr][di])hasRow=true;}
+            if(!hasRow)continue;
+            var row=[formatHour(hr)+(hr===DIST_CUTOFF_HOUR?' [CUT]':'')];
+            for(var di=0;di<7;di++){
+                var items=grid[hr]&&grid[hr][di]?grid[hr][di]:[];
+                if(!items.length){row.push('-');}
+                else{var parts=[];items.forEach(function(it){var label=it.type==='timeboard'?'TB':'SP';if(it.breakdown){DB_TYPES.forEach(function(dt){var v=it.breakdown[dt]||0;if(v>0)parts.push(label+' '+dt+' '+v);});}else{parts.push(label+' '+it.totalPredicted);}dayTotals[di]+=it.totalPredicted;if(it.adCost)dayCosts[di]+=it.adCost;});row.push(parts.join(' / '));}
+            }
+            pr.push(row);
+        }
+        pr.push(['합계'].concat(dayTotals.map(function(v){return v||'-';})));
+        var hasAnyCost=activeScheds.some(function(s){return s.adCost>0;});
+        if(hasAnyCost)pr.push(['광고비(만원)'].concat(dayCosts.map(function(v){return v?v:'-';})));
+        pr.push([]);
+    }
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pr),'차주 매체별 예상');
 
     // Sheet 2: 차주 종합 예상 (carryover 반영된 데이터)
@@ -2557,7 +2581,7 @@ function downloadPredExcel(){
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tr),'차주 종합 예상');
 
     // Sheet 3: 타임보드/스페셜 집행 계획 (활성 스케줄만)
-    var activeScheds=getActiveSchedules();
+    if(!activeScheds)activeScheds=getActiveSchedules();
     if(activeScheds.length){
         var sr=[['타임보드/스페셜 집행 계획'],['유형','날짜','시간','비중','예상 DB수','광고비(만원)','주말/평일','분배일']];
         activeScheds.forEach(function(s){
