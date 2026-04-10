@@ -1049,10 +1049,11 @@ function getPredictionForDates(dates){
     var secMediaAll=getSmartMediaDOWTableForGroup(SEC_LANG_TYPES);
     var talkMedia=getSmartMediaDOWTable('톡이즈');
     [{tbl:engMedia,dts:['영어']},{tbl:secMediaAll,dts:SEC_LANG_TYPES},{tbl:talkMedia,dts:['톡이즈']}].forEach(function(g){
-        WEEK_ORDER.forEach(function(d){
-            var tgt=g.dts.reduce(function(s,dt){return s+(pfDa[dt]?pfDa[dt][d]:0);},0);
+        var rawArr=WEEK_ORDER.map(function(d){return g.dts.reduce(function(s,dt){return s+(pfDa[dt]?pfDa[dt][d]:0);},0);});
+        var tgtArr=applyCarryover(rawArr);
+        WEEK_ORDER.forEach(function(d,i){
             var raw=0;MEDIA_TYPES.forEach(function(m){raw+=g.tbl[m][d];});
-            var ratio=raw?tgt/raw:0;
+            var ratio=raw?tgtArr[i]/raw:0;
             MEDIA_TYPES.forEach(function(m){g.tbl[m][d]=round5(g.tbl[m][d]*ratio);});
         });
     });
@@ -1748,9 +1749,10 @@ function buildPredSection(title,dts){
     var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
     var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
     if(!hasTableData(tAll))return'';
-    // 통합 예측 기준 스케일링: 매체별 합산 → 통합 예측 총량에 맞춤
+    // 통합 예측 기준 스케일링: 캐리오버 적용된 종합 예상과 일치시킴
     var da=getSmartDOWAverageByType();
-    var target=WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(da[dt]?da[dt][d]:0);},0);});
+    var rawTarget=WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(da[dt]?da[dt][d]:0);},0);});
+    var target=applyCarryover(rawTarget);
     WEEK_ORDER.forEach(function(d,i){
         var rawAM=0,rawPM=0;MEDIA_TYPES.forEach(function(m){rawAM+=tAM[m][d];rawPM+=tPM[m][d];});
         var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
@@ -1884,22 +1886,14 @@ function renderTierConfigUI(){
 }
 
 function updateTierPrediction(){
-    if(!allData.length)return;
-    var da=getSmartDOWAverageByType(),pdl=getPredDateLabels();
-    // 영어 일별 총계 (tier applies to 영어)
-    var engDaily=WEEK_ORDER.map(function(d){return da['영어'][d];});
-    // 제2외국어 일별 총계
-    var secDaily=WEEK_ORDER.map(function(d){return SEC_LANG_TYPES.reduce(function(s,dt){return s+da[dt][d];},0);});
-    // Add schedule contributions
-    var engSched=WEEK_ORDER.map(function(){return 0;}),secSched=WEEK_ORDER.map(function(){return 0;});
-    getActiveSchedules().forEach(function(s){var idx=getScheduleWeekIdx(s);if(idx===-1)return;if(s.breakdown){engSched[idx]+=(s.breakdown['영어']||0);secSched[idx]+=SEC_LANG_TYPES.reduce(function(sum,dt){return sum+(s.breakdown[dt]||0);},0);}});
-    var engTotal=WEEK_ORDER.map(function(_,i){return engDaily[i]+engSched[i];});
-    var secTotal=WEEK_ORDER.map(function(_,i){return secDaily[i]+secSched[i];});
-
-    // Carryover: non-working days accumulate to next working day
+    if(!allData.length||!lastPredData.regularData)return;
+    var pdl=getPredDateLabels();
+    // 종합 예상과 동일한 base 사용 (캐리오버 적용, 스케줄 별도)
+    var rd=lastPredData.regularData;
+    var engEffective=rd['영어'];
+    var secEffective=rd['제2외국어'];
     var wd=getNextWeekDates();
-    var engEffective=applyCarryover(engTotal);
-    var secEffective=applyCarryover(secTotal);
+    var da=getSmartDOWAverageByType();
 
     // --- 계열별 예상 유입 수량 ---
     var wSum=tierConfig.weights.reduce(function(a,b){return a+b;},0)||1;
@@ -1929,12 +1923,8 @@ function updateTierPrediction(){
     tierPredHtml+='<tr class="highlight-row"><td>합계</td><td class="num">100%</td>'+secEffective.map(function(v){return'<td class="num">'+v+'</td>';}).join('')+'<td class="num"><strong>'+secEffective.reduce(function(a,b){return a+b;},0)+'</strong></td></tr>';
     tierPredHtml+='</tbody></table></div></div>';
 
-    // 톡이즈
-    var talkDaily=WEEK_ORDER.map(function(d){return da['톡이즈'][d];});
-    var talkSched=WEEK_ORDER.map(function(){return 0;});
-    getActiveSchedules().forEach(function(s){var idx=getScheduleWeekIdx(s);if(idx===-1)return;if(s.breakdown)talkSched[idx]+=(s.breakdown['톡이즈']||0);});
-    var talkTotal=WEEK_ORDER.map(function(_,i){return talkDaily[i]+talkSched[i];});
-    var talkEffective=applyCarryover(talkTotal);
+    // 톡이즈 (종합 예상과 동일한 base)
+    var talkEffective=rd['톡이즈'];
 
     tierPredHtml+='<div><p class="section-sub">톡이즈</p><div class="table-wrap"><table><thead><tr><th>구분</th><th class="num">비중</th>';
     pdl.forEach(function(l){tierPredHtml+='<th class="num">'+l+'</th>';});
@@ -2139,7 +2129,7 @@ function updateShareTab(){
             var tAll=item.d.length>1?getSmartMediaDOWTableForGroup(item.d):getSmartMediaDOWTable(item.d[0]);
             if(!hasTableData(tAll))return;
             // 통합 예측 기준 스케일링
-            var shTarget=WEEK_ORDER.map(function(d){return item.d.reduce(function(s,dt){return s+(shDa[dt]?shDa[dt][d]:0);},0);});
+            var shTarget=applyCarryover(WEEK_ORDER.map(function(d){return item.d.reduce(function(s,dt){return s+(shDa[dt]?shDa[dt][d]:0);},0);}));
             WEEK_ORDER.forEach(function(d,i){
                 var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
                 var ratio=rawAll?shTarget[i]/rawAll:0;
@@ -2566,8 +2556,8 @@ function downloadPredExcel(){
         var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
         var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
         if(!hasTableData(tAll))return;
-        // 통합 예측 기준 스케일링
-        var xlTarget=WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(xlDa[dt]?xlDa[dt][d]:0);},0);});
+        // 통합 예측 기준 스케일링 (캐리오버 적용)
+        var xlTarget=applyCarryover(WEEK_ORDER.map(function(d){return dts.reduce(function(s,dt){return s+(xlDa[dt]?xlDa[dt][d]:0);},0);}));
         WEEK_ORDER.forEach(function(d,i){
             var rawAM=0,rawPM=0;MEDIA_TYPES.forEach(function(m){rawAM+=tAM[m][d];rawPM+=tPM[m][d];});
             var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
