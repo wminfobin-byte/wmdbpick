@@ -1053,7 +1053,7 @@ function getPredictionForDates(dates){
             var tgt=g.dts.reduce(function(s,dt){return s+(pfDa[dt]?pfDa[dt][d]:0);},0);
             var raw=0;MEDIA_TYPES.forEach(function(m){raw+=g.tbl[m][d];});
             var ratio=raw?tgt/raw:0;
-            MEDIA_TYPES.forEach(function(m){g.tbl[m][d]=Math.round(g.tbl[m][d]*ratio);});
+            MEDIA_TYPES.forEach(function(m){g.tbl[m][d]=round5(g.tbl[m][d]*ratio);});
         });
     });
     dates.forEach(function(dateStr){
@@ -1757,9 +1757,9 @@ function buildPredSection(title,dts){
         var raw=workingDayToggle[i]?(rawAM+rawPM):rawAll;
         var ratio=raw?target[i]/raw:0;
         MEDIA_TYPES.forEach(function(m){
-            tAM[m][d]=Math.round(tAM[m][d]*ratio);
-            tPM[m][d]=Math.round(tPM[m][d]*ratio);
-            tAll[m][d]=Math.round(tAll[m][d]*ratio);
+            tAM[m][d]=round5(tAM[m][d]*ratio);
+            tPM[m][d]=round5(tPM[m][d]*ratio);
+            tAll[m][d]=round5(tAll[m][d]*ratio);
         });
     });
     var h='<div class="section"><h3>'+title+' - 차주 매체별 예상</h3>';
@@ -2143,7 +2143,7 @@ function updateShareTab(){
             WEEK_ORDER.forEach(function(d,i){
                 var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
                 var ratio=rawAll?shTarget[i]/rawAll:0;
-                MEDIA_TYPES.forEach(function(m){tAll[m][d]=Math.round(tAll[m][d]*ratio);});
+                MEDIA_TYPES.forEach(function(m){tAll[m][d]=round5(tAll[m][d]*ratio);});
             });
             mh+='<h4>'+item.t+'</h4>';
             mh+='<table class="share-table"><thead><tr><th>매체</th>';pdl.forEach(function(l){mh+='<th>'+l+'</th>';});mh+='<th>합계</th></tr></thead><tbody>';
@@ -2573,7 +2573,7 @@ function downloadPredExcel(){
             var rawAll=0;MEDIA_TYPES.forEach(function(m){rawAll+=tAll[m][d];});
             var raw=workingDayToggle[i]?(rawAM+rawPM):rawAll;
             var ratio=raw?xlTarget[i]/raw:0;
-            MEDIA_TYPES.forEach(function(m){tAM[m][d]=Math.round(tAM[m][d]*ratio);tPM[m][d]=Math.round(tPM[m][d]*ratio);tAll[m][d]=Math.round(tAll[m][d]*ratio);});
+            MEDIA_TYPES.forEach(function(m){tAM[m][d]=round5(tAM[m][d]*ratio);tPM[m][d]=round5(tPM[m][d]*ratio);tAll[m][d]=round5(tAll[m][d]*ratio);});
         });
         pr.push([item.t+' - 차주 매체별 예상']);pr.push(hdr);
         var am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
