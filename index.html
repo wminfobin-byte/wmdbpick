@@ -2523,7 +2523,7 @@ function downloadPredExcel(){
         if(!hasTableData(tAll))return;
         pr.push([item.t+' - 차주 매체별 예상']);pr.push(hdr);
         var am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
-        MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){if(!workingDayToggle[i]){var v=tAll[m][d];am[i]+=v;return v;}var v=tAM[m][d];am[i]+=v;return v;});if(vs.reduce(function(a,b){return a+b;},0)>0)pr.push([m].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
+        MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){if(!workingDayToggle[i]){var v=tAll[m][d];am[i]+=v;return v;}var v=tAM[m][d];am[i]+=v;return v;});pr.push([m].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
         pr.push(['오전 합계'].concat(am).concat([am.reduce(function(a,b){return a+b;},0)]));
         MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(workingDayToggle[i])pm[i]+=tPM[m][d];});});
         pr.push(['오후 추가'].concat(pm).concat([pm.reduce(function(a,b){return a+b;},0)]));
