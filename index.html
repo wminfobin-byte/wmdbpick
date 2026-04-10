@@ -1412,7 +1412,15 @@ function getSpecialTimeAvgByTypeByDayType(type,isWeekend){
 // ======================== AI Trend Prediction ========================
 function getWeekStart(ds){var d=new Date(ds+'T00:00:00'),dw=d.getDay(),df=(dw+1)%7;var s=new Date(d);s.setDate(s.getDate()-df);return s.toISOString().slice(0,10);}
 function round5(v){return Math.round(v/5)*5;}
-function smartPredict(wv){if(!wv.length)return 0;if(wv.length===1)return round5(wv[0]);var n=wv.length,a=0.35,ew=wv[0];for(var i=1;i<n;i++)ew=a*wv[i]+(1-a)*ew;var sx=0,sy=0,sxy=0,sx2=0;for(var i=0;i<n;i++){sx+=i;sy+=wv[i];sxy+=i*wv[i];sx2+=i*i;}var dn=n*sx2-sx*sx,sl=dn?((n*sxy-sx*sy)/dn):0;return Math.max(0,round5(0.6*ew+0.4*(ew+sl)));}
+function removeOutliers(arr){
+    if(arr.length<3)return arr;
+    var sorted=arr.slice().sort(function(a,b){return a-b;});
+    var median=sorted[Math.floor(sorted.length/2)];
+    if(median===0)return arr;
+    var filtered=arr.filter(function(v){return v>=median*0.5;});
+    return filtered.length>=2?filtered:arr;
+}
+function smartPredict(wv){wv=removeOutliers(wv);if(!wv.length)return 0;if(wv.length===1)return round5(wv[0]);var n=wv.length,a=0.35,ew=wv[0];for(var i=1;i<n;i++)ew=a*wv[i]+(1-a)*ew;var sx=0,sy=0,sxy=0,sx2=0;for(var i=0;i<n;i++){sx+=i;sy+=wv[i];sxy+=i*wv[i];sx2+=i*i;}var dn=n*sx2-sx*sx,sl=dn?((n*sxy-sx*sy)/dn):0;return Math.max(0,round5(0.6*ew+0.4*(ew+sl)));}
 function getWeeklySeriesForDOW(fn,dow,ub){var wm={};allData.forEach(function(d){if(!fn(d))return;var dw=ub?d.batchDayOfWeek:d.dayOfWeek;if(dw!==dow)return;var dk=ub?d.batchDate:d.dateStr;var wk=getWeekStart(dk);wm[wk]=(wm[wk]||0)+1;});return Object.keys(wm).sort().map(function(w){return wm[w];});}
 function getSmartDOWAverageByType(){var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){r[dt][d]=smartPredict(getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===dt;},d,false));});});return r;}
 function getSmartMediaDOWTable(f){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=smartPredict(getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===f&&x.media===m;},d,false));});});return r;}
