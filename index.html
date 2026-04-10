@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
         :root{--navy:#0f172a;--navy-light:#1e293b;--blue:#2563eb;--blue-light:#3b82f6;--blue-pale:#dbeafe;--blue-bg:#eff6ff;--slate:#475569;--slate-light:#94a3b8;--green:#059669;--green-bg:#ecfdf5;--red:#dc2626;--red-bg:#fef2f2;--purple:#7c3aed;--purple-bg:#f5f3ff;--teal:#0891b2;--amber:#d97706;--gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-300:#cbd5e1;--radius:12px;--shadow-sm:0 1px 2px rgba(0,0,0,0.05);--shadow:0 1px 3px rgba(0,0,0,0.1),0 1px 2px rgba(0,0,0,0.06);--shadow-md:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -2px rgba(0,0,0,0.1);--shadow-lg:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -4px rgba(0,0,0,0.1);--font:'Inter','Segoe UI','Malgun Gothic',system-ui,sans-serif}
         *{margin:0;padding:0;box-sizing:border-box}
@@ -328,6 +329,10 @@
     </div>
     <div class="tab-content" id="tab-prediction">
         <div id="predictionContent" style="display:none;">
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;">
+                <button class="btn-download" onclick="downloadPredExcel()">엑셀 통합 다운로드</button>
+                <button class="btn-download" style="background:#43a047;" onclick="captureTotalPred()">종합 예상 PNG 캡쳐</button>
+            </div>
             <p style="color:#666;font-size:0.85rem;margin-bottom:12px;" id="predWeekLabel"></p>
             <div class="wd-toggle-row" id="workingDayToggles"></div>
             <div id="predictionTables"></div>
@@ -403,10 +408,9 @@
                 <div id="groupDistTables"></div>
             </div>
 
-            <div class="section">
+            <div class="section" id="totalPredSection">
                 <div class="section-title-row">
                     <h3>차주 종합 예상</h3>
-                    <button class="btn-download" onclick="downloadPredExcel()">엑셀 통합 다운로드</button>
                 </div>
                 <div class="table-wrap">
                     <table id="totalPredTable">
@@ -2504,6 +2508,17 @@ function renderShareCharts(){
         });
         if(tmData.length)renderChart('shareTalkizPieChart','doughnut',{labels:tmLabels,datasets:[{data:tmData,backgroundColor:tmColors}]},pieOpts,piePlugins);
     }
+}
+
+function captureTotalPred(){
+    var el=document.getElementById('totalPredSection');
+    if(!el)return alert('차주 종합 예상 섹션이 없습니다.');
+    html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true}).then(function(canvas){
+        var link=document.createElement('a');
+        link.download='차주_종합_예상_'+formatDate(new Date())+'.png';
+        link.href=canvas.toDataURL('image/png');
+        link.click();
+    });
 }
 
 function downloadPredExcel(){
