@@ -7,10 +7,10 @@
     <link rel="icon" type="image/png" href="database_13739452.png">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
         :root{--navy:#0f172a;--navy-light:#1e293b;--blue:#2563eb;--blue-light:#3b82f6;--blue-pale:#dbeafe;--blue-bg:#eff6ff;--slate:#475569;--slate-light:#94a3b8;--green:#059669;--green-bg:#ecfdf5;--red:#dc2626;--red-bg:#fef2f2;--purple:#7c3aed;--purple-bg:#f5f3ff;--teal:#0891b2;--amber:#d97706;--gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-300:#cbd5e1;--radius:12px;--shadow-sm:0 1px 2px rgba(0,0,0,0.05);--shadow:0 1px 3px rgba(0,0,0,0.1),0 1px 2px rgba(0,0,0,0.06);--shadow-md:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -2px rgba(0,0,0,0.1);--shadow-lg:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -4px rgba(0,0,0,0.1);--font:'Inter','Segoe UI','Malgun Gothic',system-ui,sans-serif}
         *{margin:0;padding:0;box-sizing:border-box}
@@ -716,25 +716,28 @@ function saveTierConfig(){
     idbPut('tierConfig',tierConfig);
 }
 async function loadFromStorage(onProgress){
+    if(onProgress)await onProgress(30);
     try{
-        var r=await idbGet('dbData');
-        if(onProgress)await onProgress(30);
-        var f=await idbGet('dbFiles');
-        if(r&&r.length)allData=r.map(expandRecord);
-        if(f)uploadedFiles=f;
-        if(onProgress)await onProgress(45);
+        var results=await Promise.all([
+            idbGet('dbData'),idbGet('dbFiles'),
+            idbGet('attendData'),idbGet('attendFiles'),idbGet('attendMonth'),
+            idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
+            idbGet('tbspData'),idbGet('tbspFiles'),
+            idbGet('actualInflowData'),idbGet('actualInflowFiles')
+        ]);
+        if(results[0]&&results[0].length)allData=results[0].map(expandRecord);
+        if(results[1])uploadedFiles=results[1];
+        if(results[2])attendanceData=results[2];
+        if(results[3])attendanceFiles=results[3];
+        if(results[4])attendanceMonth=results[4];
+        if(results[5])tierConfig=results[5];
+        if(results[6])workingDayToggle=results[6];
+        if(results[7])schedules=results[7];
+        if(results[8])tbspData=results[8];
+        if(results[9])tbspFiles=results[9];
+        if(results[10])actualInflowData=results[10];
+        if(results[11])actualInflowFiles=results[11];
     }catch(e){allData=[];uploadedFiles=[];}
-    try{
-        var a=await idbGet('attendData'),af=await idbGet('attendFiles'),am=await idbGet('attendMonth');
-        if(a)attendanceData=a;if(af)attendanceFiles=af;if(am)attendanceMonth=am;
-    }catch(e){}
-    if(onProgress)await onProgress(55);
-    try{var t=await idbGet('tierConfig');if(t)tierConfig=t;}catch(e){}
-    try{var w=await idbGet('workingDays');if(w)workingDayToggle=w;}catch(e){}
-    try{var sc=await idbGet('schedules');if(sc)schedules=sc;}catch(e){}
-    if(onProgress)await onProgress(65);
-    try{var tb2=await idbGet('tbspData');if(tb2)tbspData=tb2;var tf=await idbGet('tbspFiles');if(tf)tbspFiles=tf;}catch(e){}
-    try{var ai=await idbGet('actualInflowData');if(ai)actualInflowData=ai;var aif=await idbGet('actualInflowFiles');if(aif)actualInflowFiles=aif;}catch(e){}
     if(onProgress)await onProgress(75);
     // Migrate from localStorage if IndexedDB is empty but localStorage has data
     if(!allData.length){
@@ -2871,7 +2874,6 @@ function setInitProgress(pct){
         if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addSchedule();}});
     });
     await setInitProgress(100);
-    await new Promise(function(resolve){setTimeout(resolve,500);});
     updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
 })();
 
