@@ -517,6 +517,7 @@
         </div>
         <div class="modal-actions">
             <button class="btn btn-danger" onclick="clearAllData()">전체 초기화</button>
+            <button class="btn" onclick="manualPurge()" style="background:#eee;color:#333;">오래된 데이터 정리</button>
             <button class="btn btn-primary" onclick="closeModal()">닫기</button>
         </div>
     </div>
@@ -683,6 +684,36 @@ async function saveToStorage(){
         await idbPut('dbData',allData.map(slimRecord));
         await idbPut('dbFiles',uploadedFiles);
     }catch(e){console.error('저장 오류:',e);}
+}
+// ======================== Data Retention / Purge ========================
+// EMA α=0.35 기반 예측에서 12주 이전 데이터 기여도 <1% → 안전하게 정리 가능
+var DB_RETENTION_WEEKS=parseInt(localStorage.getItem('dbRetentionWeeks'))||12;
+var ACTUAL_RETENTION_WEEKS=parseInt(localStorage.getItem('actualRetentionWeeks'))||2;
+function retentionCutoff(weeks){var d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-weeks*7);return formatDate(d);}
+function purgeOldData(){
+    var dbCut=retentionCutoff(DB_RETENTION_WEEKS),acCut=retentionCutoff(ACTUAL_RETENTION_WEEKS);
+    var bDB=allData.length,bAc=actualInflowData.length;
+    allData=allData.filter(function(d){return d.dateStr>=dbCut;});
+    actualInflowData=actualInflowData.filter(function(d){return d.inflowDate>=acCut;});
+    var keep={};allData.forEach(function(d){if(d.fileName)keep[d.fileName]=true;});
+    uploadedFiles=uploadedFiles.filter(function(f){return keep[f];});
+    if(!actualInflowData.length)actualInflowFiles=[];
+    return{dbRem:bDB-allData.length,acRem:bAc-actualInflowData.length,dbCut:dbCut,acCut:acCut};
+}
+async function purgeAndPersist(){
+    var r=purgeOldData();
+    if(r.dbRem>0||r.acRem>0){
+        await saveToStorage();
+        await idbPut('actualInflowData',actualInflowData);
+        await idbPut('actualInflowFiles',actualInflowFiles);
+    }
+    return r;
+}
+async function manualPurge(){
+    if(!confirm('보관 기간 초과 데이터를 정리합니다.\n\n- DB 데이터: '+DB_RETENTION_WEEKS+'주 이전 삭제\n- 실제 유입: '+ACTUAL_RETENTION_WEEKS+'주 이전 삭제\n\n예상 수치에 영향 없습니다. 진행하시겠습니까?'))return;
+    var r=await purgeAndPersist();
+    alert('정리 완료\n- DB: '+r.dbRem.toLocaleString()+'건 삭제\n- 실제 유입: '+r.acRem.toLocaleString()+'건 삭제');
+    updateAll();updateModalUI();
 }
 async function saveAttendance(){
     try{
@@ -881,6 +912,9 @@ async function handleFiles(files){
             else if(isReupload&&patched===0)dc++;
         }catch(err){alert('파일 오류 ('+f.name+'): '+err.message);}
     }
+    updateLoading(88,'오래된 데이터 정리...');
+    await new Promise(function(r){setTimeout(r,10);});
+    try{purgeOldData();}catch(e){}
     updateLoading(90,'저장 중...');
     await new Promise(function(r){setTimeout(r,30);});
     await saveToStorage();
@@ -971,6 +1005,7 @@ async function handleActualInflowFile(file){
         updateLoading(60,r.records.length+'건 처리 완료');
         await new Promise(function(r2){setTimeout(r2,30);});
         actualInflowData=r.records;actualInflowFiles=[r.fileName];
+        try{purgeOldData();}catch(e){}
         await idbPut('actualInflowData',actualInflowData);
         await idbPut('actualInflowFiles',actualInflowFiles);
         updateLoading(90,'화면 업데이트 중...');
@@ -2885,6 +2920,8 @@ function setInitProgress(pct){
     await loadFromStorage(setInitProgress);
     await setInitProgress(80);
     if(!allData.length){await loadFromJSON();}
+    // 보관 기간 초과 데이터 자동 정리 (로드 직후, 렌더 전)
+    try{await purgeAndPersist();}catch(e){console.error('purge error:',e);}
     await setInitProgress(90);
     // 스케줄 날짜 기본값: 차주 토요일
     var nw=getNextWeekRange();var defDate=formatDate(nw.start);
