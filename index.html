@@ -2091,12 +2091,12 @@ function updateShareTab(){
         return bh;
     }
     function buildKPIs(){
-        var kh='<div class="share-kpis">';
+        var kh='<div class="share-kpis" style="grid-template-columns:repeat(4,1fr);">';
         kh+='<div class="share-kpi accent-red"><div class="kpi-label">주간 총 예상</div><div class="kpi-value">'+totalWeek.toLocaleString()+'</div><div class="kpi-sub">전체 DB 합계</div></div>';
-        kh+='<div class="share-kpi"><div class="kpi-label">영어 합계</div><div class="kpi-value">'+engTotalWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
-        kh+='<div class="share-kpi accent-green"><div class="kpi-label">제2외국어 합계</div><div class="kpi-value">'+secTotalWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
-        kh+='<div class="share-kpi accent-purple"><div class="kpi-label">톡이즈 합계</div><div class="kpi-value">'+talkTotalWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
-        kh+='<div class="share-kpi accent-teal"><div class="kpi-label">평일 일 평균</div><div class="kpi-value">'+totalWeekdayAvg.toLocaleString()+'</div><div class="kpi-sub">월~금 평균</div></div>';
+        kh+='<div class="share-kpi"><div class="kpi-label">영어</div><div class="kpi-value">'+engTotalWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+        kh+='<div class="share-kpi accent-green"><div class="kpi-label">제2외국어</div><div class="kpi-value">'+secTotalWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+        kh+='<div class="share-kpi accent-purple"><div class="kpi-label">톡이즈</div><div class="kpi-value">'+talkTotalWeek.toLocaleString()+'</div><div class="kpi-sub">주간 합계</div></div>';
+        kh+='<div class="share-kpi accent-teal"><div class="kpi-label">평일 일평균</div><div class="kpi-value">'+totalWeekdayAvg.toLocaleString()+'</div><div class="kpi-sub">월~금 평균</div></div>';
         kh+='<div class="share-kpi"><div class="kpi-label">평일 영어 일평균</div><div class="kpi-value">'+engWeekdayAvg.toLocaleString()+'</div><div class="kpi-sub">월~금 평균</div></div>';
         kh+='<div class="share-kpi accent-green"><div class="kpi-label">평일 제2외국어 일평균</div><div class="kpi-value">'+secWeekdayAvg.toLocaleString()+'</div><div class="kpi-sub">월~금 평균</div></div>';
         kh+='<div class="share-kpi accent-purple"><div class="kpi-label">평일 톡이즈 일평균</div><div class="kpi-value">'+talkWeekdayAvgK.toLocaleString()+'</div><div class="kpi-sub">월~금 평균</div></div>';
