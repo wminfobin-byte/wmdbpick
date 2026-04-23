@@ -1813,19 +1813,30 @@ function getMediaDOWTotal(dts){
     });
 }
 
-function buildPredSection(title,dts){
+// 수동 조정 비율 (day index별): raw 일별 총량 대비 조정 후 비율.
+// 매체별 테이블의 각 셀(매체×요일×AM/PM)에 동일 day ratio를 곱해 매체 비중·AM/PM 비율은 유지하면서 총량만 조정.
+function getAdjustDayRatios(dts,cat){
+    if(!cat||!manualAdjust[cat])return WEEK_ORDER.map(function(){return 1;});
+    var raw=getMediaDOWTotal(dts);
+    var adjusted=applyManualAdjust(raw,cat);
+    return raw.map(function(v,i){return v>0?adjusted[i]/v:1;});
+}
+
+function buildPredSection(title,dts,adjustCat){
     dts=Array.isArray(dts)?dts:[dts];
     var tAM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오전'):getSmartMediaDOWTableByPeriod(dts[0],'오전');
     var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
     var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
     if(!hasTableData(tAll))return'';
-    var h='<div class="section"><h3>'+title+' - 차주 매체별 예상</h3>';
+    var ratios=getAdjustDayRatios(dts,adjustCat);
+    var adjNote=(adjustCat&&manualAdjust[adjustCat]&&(manualAdjust[adjustCat].level!==0||(Number(manualAdjust[adjustCat].offset)||0)!==0))?' <span style="font-size:0.72rem;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:10px;font-weight:600;vertical-align:middle;">수동 조정 반영</span>':'';
+    var h='<div class="section"><h3>'+title+' - 차주 매체별 예상'+adjNote+'</h3>';
     var bh='',am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
-    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){if(!workingDayToggle[i]){var v=tAll[m][d];am[i]+=v;return v;}var v=tAM[m][d];am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';});
-    bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+fn(v)+'</strong></td>';}).join('')+'<td class="num"><strong>'+fn(am.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
-    MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(workingDayToggle[i])pm[i]+=tPM[m][d];});});
-    bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(pm.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
-    var tv=WEEK_ORDER.map(function(_,i){return am[i]+pm[i];});
+    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i];if(!workingDayToggle[i]){var v=tAll[m][d]*r;am[i]+=v;return v;}var v=tAM[m][d]*r;am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(Math.round(v))+'</td>';}).join('')+'<td class="num"><strong>'+fn(Math.round(rt))+'</strong></td></tr>';});
+    bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+fn(Math.round(v))+'</strong></td>';}).join('')+'<td class="num"><strong>'+fn(Math.round(am.reduce(function(a,b){return a+b;},0)))+'</strong></td></tr>';
+    MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(workingDayToggle[i])pm[i]+=tPM[m][d]*ratios[i];});});
+    bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+fnd(Math.round(v))+'</td>';}).join('')+'<td class="num"><strong>'+fn(Math.round(pm.reduce(function(a,b){return a+b;},0)))+'</strong></td></tr>';
+    var tv=WEEK_ORDER.map(function(_,i){return Math.round(am[i]+pm[i]);});
     bh+=buildPredRow('총 합계',tv,true);
     h+='<div class="table-wrap"><table>'+PTH()+'<tbody>'+bh+'</tbody></table></div></div>';
     return h;
@@ -1873,22 +1884,20 @@ function setAdjustLevel(cat,v){
     manualAdjust[cat]=manualAdjust[cat]||{level:0,offset:0};
     manualAdjust[cat].level=v;
     saveManualAdjust();
-    renderManualAdjustUI();
-    updateTotalPrediction();updateTierPrediction();updateShareTab();
+    updatePrediction();
 }
 
 function setAdjustOffset(cat,v){
     manualAdjust[cat]=manualAdjust[cat]||{level:0,offset:0};
     manualAdjust[cat].offset=parseInt(v,10)||0;
     saveManualAdjust();
-    updateTotalPrediction();updateTierPrediction();updateShareTab();
+    updatePrediction();
 }
 
 function resetManualAdjust(){
     manualAdjust={'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
     saveManualAdjust();
-    renderManualAdjustUI();
-    updateTotalPrediction();updateTierPrediction();updateShareTab();
+    updatePrediction();
 }
 
 // 퍼센트 → 오프셋 순. 오프셋은 working-day의 현재 패턴 비율로 가중 분배.
@@ -1952,10 +1961,10 @@ function updatePrediction(){
     pdl.forEach(function(l,i){var on=workingDayToggle[i];tgl+='<div class="wd-day'+(on?'':' wd-off')+'"><span>'+l+'</span><label class="toggle-switch"><input type="checkbox"'+(on?' checked':'')+' onchange="toggleWorkingDay('+i+')"><span class="toggle-slider"></span></label></div>';});
     document.getElementById('workingDayToggles').innerHTML=tgl;
     var c=document.getElementById('predictionTables'),h='';
-    h+=buildPredSection('영어','영어');
-    h+=buildPredSection('제2외국어',SEC_LANG_TYPES);
-    SEC_LANG_TYPES.forEach(function(dt){h+=buildPredSection(dt,dt);});
-    h+=buildPredSection('톡이즈','톡이즈');
+    h+=buildPredSection('영어','영어','영어');
+    h+=buildPredSection('제2외국어',SEC_LANG_TYPES,'제2외국어');
+    SEC_LANG_TYPES.forEach(function(dt){h+=buildPredSection(dt,dt,'제2외국어');});
+    h+=buildPredSection('톡이즈','톡이즈','톡이즈');
     c.innerHTML=h;
     renderManualAdjustUI();
     updateScheduleUI();updateTotalPrediction();updateTierPrediction();updateShareTab();
