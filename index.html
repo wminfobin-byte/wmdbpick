@@ -335,6 +335,16 @@
             </div>
             <p style="color:#666;font-size:0.85rem;margin-bottom:12px;" id="predWeekLabel"></p>
             <div class="wd-toggle-row" id="workingDayToggles"></div>
+
+            <div class="section" id="manualAdjustSection" style="margin-bottom:14px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+                    <h3 style="margin:0;display:flex;align-items:center;gap:10px;">수동 조정 <span style="font-size:0.7rem;background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-weight:600;">실제 감각 반영</span></h3>
+                    <button onclick="resetManualAdjust()" style="padding:5px 12px;background:#9e9e9e;color:white;border:none;border-radius:6px;font-size:0.78rem;cursor:pointer;">초기화</button>
+                </div>
+                <p style="color:#666;font-size:0.8rem;margin-bottom:10px;">AI 추세 예측 대비 실제 유입 감각을 반영합니다. <strong>퍼센트 → 주 총량 오프셋</strong> 순으로 적용되며, 요일별 분포(월/화 많고 금 적은 패턴)는 유지됩니다.</p>
+                <div id="manualAdjustRows"></div>
+            </div>
+
             <div id="predictionTables"></div>
 
             <div class="section">
@@ -410,7 +420,7 @@
 
             <div class="section" id="totalPredSection">
                 <div class="section-title-row">
-                    <h3>차주 종합 예상</h3>
+                    <h3>차주 종합 예상 <span id="adjustBadge" style="display:none;font-size:0.72rem;background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-weight:600;margin-left:8px;"></span></h3>
                 </div>
                 <div class="table-wrap">
                     <table id="totalPredTable">
@@ -592,6 +602,8 @@ function applyAuthUI(){
 // ======================== State ========================
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
+// 수동 조정: 계열별 퍼센트 레벨(-2~+2) + 주 총량 오프셋(개)
+var manualAdjust={'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
 // 분배 여부 토글: [토,일,월,화,수,목,금] — true=분배일, false=비분배일(이월)
 var workingDayToggle=[true,false,true,true,true,true,true];
 // 타임보드/스페셜 참고 데이터 (A열 유입일, B열 매체코드)
@@ -754,7 +766,8 @@ async function loadFromStorage(onProgress){
             idbGet('attendData'),idbGet('attendFiles'),idbGet('attendMonth'),
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('tbspData'),idbGet('tbspFiles'),
-            idbGet('actualInflowData'),idbGet('actualInflowFiles')
+            idbGet('actualInflowData'),idbGet('actualInflowFiles'),
+            idbGet('manualAdjust')
         ]);
         if(results[0]&&results[0].length)allData=results[0].map(expandRecord);
         if(results[1])uploadedFiles=results[1];
@@ -768,6 +781,7 @@ async function loadFromStorage(onProgress){
         if(results[9])tbspFiles=results[9];
         if(results[10])actualInflowData=results[10];
         if(results[11])actualInflowFiles=results[11];
+        if(results[12])manualAdjust=Object.assign({'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},results[12]);
     }catch(e){allData=[];uploadedFiles=[];}
     if(onProgress)await onProgress(75);
     // Migrate from localStorage if IndexedDB is empty but localStorage has data
@@ -1686,6 +1700,7 @@ function sortSchedules(){
     });
 }
 function saveSchedules(){idbPut('schedules',schedules);}
+function saveManualAdjust(){idbPut('manualAdjust',manualAdjust);}
 function removeSchedule(id){if(editingScheduleId===id)cancelEdit();schedules=schedules.filter(function(s){return s.id!==id;});saveSchedules();updateScheduleUI();updateTotalPrediction();}
 function clearAllSchedules(){if(!schedules.length||!confirm('모든 스케줄을 삭제하시겠습니까?'))return;schedules=[];saveSchedules();updateScheduleUI();updateTotalPrediction();}
 function getScheduleDistDay(s){return(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR)?(s.day+1)%7:s.day;}
@@ -1818,6 +1833,117 @@ function buildPredSection(title,dts){
 
 var lastPredData={};
 
+// ======================== Manual Adjust ========================
+var ADJUST_LEVELS=[
+    {v:-2,label:'매우 감소',pct:'-30%',color:'#c62828'},
+    {v:-1,label:'감소',pct:'-15%',color:'#ef6c00'},
+    {v:0,label:'보통',pct:'0%',color:'#616161'},
+    {v:1,label:'증가',pct:'+15%',color:'#1565c0'},
+    {v:2,label:'매우 증가',pct:'+30%',color:'#2e7d32'}
+];
+var ADJUST_PCT_MAP={'-2':0.7,'-1':0.85,'0':1.0,'1':1.15,'2':1.3};
+
+function renderManualAdjustUI(){
+    var host=document.getElementById('manualAdjustRows');
+    if(!host)return;
+    var cats=['영어','제2외국어','톡이즈'];
+    var h='';
+    cats.forEach(function(cat){
+        var adj=manualAdjust[cat]||{level:0,offset:0};
+        var catColor=COLORS[cat]||'#333';
+        h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;flex-wrap:wrap;background:#fafafa;">';
+        h+='<span style="font-weight:600;min-width:72px;color:'+catColor+';font-size:0.9rem;">'+cat+'</span>';
+        h+='<div style="display:flex;gap:4px;flex-wrap:wrap;">';
+        ADJUST_LEVELS.forEach(function(L){
+            var active=(adj.level===L.v);
+            h+='<button onclick="setAdjustLevel(\''+cat+'\','+L.v+')" style="padding:6px 10px;border:1px solid '+(active?L.color:'#ddd')+';background:'+(active?L.color:'#fff')+';color:'+(active?'#fff':'#666')+';border-radius:6px;font-size:0.78rem;cursor:pointer;font-weight:'+(active?'600':'400')+';white-space:nowrap;">'+L.label+' <span style="font-size:0.7rem;opacity:0.85;">'+L.pct+'</span></button>';
+        });
+        h+='</div>';
+        h+='<div style="display:flex;align-items:center;gap:6px;margin-left:auto;">';
+        h+='<span style="font-size:0.8rem;color:#666;">주 총량 오프셋</span>';
+        h+='<input type="number" value="'+(adj.offset||0)+'" step="1" onchange="setAdjustOffset(\''+cat+'\',this.value)" style="width:80px;padding:5px 7px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;text-align:right;">';
+        h+='<span style="font-size:0.8rem;color:#666;">개</span>';
+        h+='</div>';
+        h+='</div>';
+    });
+    host.innerHTML=h;
+}
+
+function setAdjustLevel(cat,v){
+    manualAdjust[cat]=manualAdjust[cat]||{level:0,offset:0};
+    manualAdjust[cat].level=v;
+    saveManualAdjust();
+    renderManualAdjustUI();
+    updateTotalPrediction();updateTierPrediction();updateShareTab();
+}
+
+function setAdjustOffset(cat,v){
+    manualAdjust[cat]=manualAdjust[cat]||{level:0,offset:0};
+    manualAdjust[cat].offset=parseInt(v,10)||0;
+    saveManualAdjust();
+    updateTotalPrediction();updateTierPrediction();updateShareTab();
+}
+
+function resetManualAdjust(){
+    manualAdjust={'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
+    saveManualAdjust();
+    renderManualAdjustUI();
+    updateTotalPrediction();updateTierPrediction();updateShareTab();
+}
+
+// 퍼센트 → 오프셋 순. 오프셋은 working-day의 현재 패턴 비율로 가중 분배.
+function applyManualAdjust(dailyVals,cat){
+    var adj=manualAdjust[cat];
+    if(!adj)return dailyVals.slice();
+    var pct=ADJUST_PCT_MAP[String(adj.level)]||1.0;
+    var offset=Number(adj.offset)||0;
+    if(pct===1.0&&offset===0)return dailyVals.slice();
+    var scaled=dailyVals.map(function(v){return v*pct;});
+    if(offset!==0){
+        var workingSum=0;
+        scaled.forEach(function(v,i){if(workingDayToggle[i])workingSum+=v;});
+        if(workingSum>0){
+            scaled=scaled.map(function(v,i){
+                if(!workingDayToggle[i])return v;
+                return v+offset*(v/workingSum);
+            });
+        }else{
+            var wCount=workingDayToggle.filter(Boolean).length||1;
+            scaled=scaled.map(function(v,i){
+                if(!workingDayToggle[i])return v;
+                return v+offset/wCount;
+            });
+        }
+    }
+    return scaled.map(function(v){return Math.max(0,Math.round(v));});
+}
+
+function hasAnyAdjust(){
+    var cats=['영어','제2외국어','톡이즈'];
+    for(var i=0;i<cats.length;i++){
+        var a=manualAdjust[cats[i]];
+        if(a&&(a.level!==0||(Number(a.offset)||0)!==0))return true;
+    }
+    return false;
+}
+
+function updateAdjustBadge(){
+    var el=document.getElementById('adjustBadge');
+    if(!el)return;
+    if(!hasAnyAdjust()){el.style.display='none';el.textContent='';return;}
+    var parts=[];
+    ['영어','제2외국어','톡이즈'].forEach(function(cat){
+        var a=manualAdjust[cat]||{level:0,offset:0};
+        if(a.level===0&&!a.offset)return;
+        var seg=cat+' ';
+        if(a.level!==0){var L=ADJUST_LEVELS.find(function(x){return x.v===a.level;});if(L)seg+=L.pct;}
+        if(a.offset){seg+=(a.level!==0?' ':'')+(a.offset>0?'+':'')+a.offset+'개';}
+        parts.push(seg);
+    });
+    el.textContent='⚡ 수동 조정 반영: '+parts.join(' / ');
+    el.style.display='';
+}
+
 function updatePrediction(){
     var nw=getNextWeekRange(),pdl=getPredDateLabels();
     document.getElementById('predWeekLabel').innerHTML='예상 기간: '+formatDate(nw.start)+' (토) ~ '+formatDate(nw.end)+' (금) &nbsp;<span style="display:inline-block;background:#e8eaf6;color:#1a237e;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">AI 추세 예측</span>';
@@ -1831,6 +1957,7 @@ function updatePrediction(){
     SEC_LANG_TYPES.forEach(function(dt){h+=buildPredSection(dt,dt);});
     h+=buildPredSection('톡이즈','톡이즈');
     c.innerHTML=h;
+    renderManualAdjustUI();
     updateScheduleUI();updateTotalPrediction();updateTierPrediction();updateShareTab();
 }
 
@@ -1845,6 +1972,18 @@ function updateTotalPrediction(){
     rd['제2외국어']=applyCarryover(getMediaDOWTotal(SEC_LANG_TYPES));
     rd['톡이즈']=applyCarryover(getMediaDOWTotal('톡이즈'));
     SEC_LANG_TYPES.forEach(function(dt){rd[dt]=applyCarryover(getMediaDOWTotal(dt));});
+    // 수동 조정 (퍼센트 → 오프셋, 요일 패턴 유지). 제2외국어 하위 언어는 비례 스케일링.
+    var origSec=rd['제2외국어'].slice();
+    rd['영어']=applyManualAdjust(rd['영어'],'영어');
+    rd['제2외국어']=applyManualAdjust(rd['제2외국어'],'제2외국어');
+    rd['톡이즈']=applyManualAdjust(rd['톡이즈'],'톡이즈');
+    SEC_LANG_TYPES.forEach(function(dt){
+        rd[dt]=rd[dt].map(function(v,i){
+            if(!origSec[i])return v;
+            return Math.round(v*rd['제2외국어'][i]/origSec[i]);
+        });
+    });
+    updateAdjustBadge();
     var tbD=WEEK_ORDER.map(function(){return 0;}),spD=WEEK_ORDER.map(function(){return 0;});
     var sc={'영어':WEEK_ORDER.map(function(){return 0;}),'제2외국어':WEEK_ORDER.map(function(){return 0;}),'톡이즈':WEEK_ORDER.map(function(){return 0;})};
     // Per-DB-type timeboard/special breakdown
@@ -2822,7 +2961,7 @@ async function saveToGitHub(){
     try{
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         var wrapper=JSON.stringify({z:compressed});
         var content=btoa(unescape(encodeURIComponent(wrapper)));
@@ -2890,6 +3029,7 @@ async function loadFromJSON(){
             if(payload.tbspFiles)tbspFiles=payload.tbspFiles;
             if(payload.actualInflowData)actualInflowData=payload.actualInflowData;
             if(payload.actualInflowFiles)actualInflowFiles=payload.actualInflowFiles;
+            if(payload.manualAdjust)manualAdjust=Object.assign({'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},payload.manualAdjust);
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             return true;
         }
