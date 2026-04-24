@@ -1792,7 +1792,78 @@ function buildTableHtml(td){var tt=WEEK_ORDER.map(function(){return 0;});var rh=
 function wrapTable(bh){return'<div class="table-wrap"><table><thead><tr><th>매체</th><th class="num">토</th><th class="num">일</th><th class="num">월</th><th class="num">화</th><th class="num">수</th><th class="num">목</th><th class="num">금</th><th class="num">합계</th></tr></thead><tbody>'+bh+'</tbody></table></div>';}
 function hasTableData(td){return MEDIA_TYPES.some(function(m){return WEEK_ORDER.some(function(d){return td[m][d]>0;});});}
 
-function updateAnalysisTables(){var c=document.getElementById('analysisTables'),h='';DB_TYPES.forEach(function(dt){var ta=getMediaDOWTable(dt);if(!hasTableData(ta))return;var am=getMediaDOWTableByPeriod(dt,'오전'),pm=getMediaDOWTableByPeriod(dt,'오후');h+='<div class="section"><h3>'+dt+' - 매체별 / 요일별 평균 DB수</h3><p class="section-sub">전체</p>'+wrapTable(buildTableHtml(ta));if(hasTableData(am))h+='<p class="section-sub">오전</p>'+wrapTable(buildTableHtml(am));if(hasTableData(pm))h+='<p class="section-sub">오후</p>'+wrapTable(buildTableHtml(pm));h+='</div>';});c.innerHTML=h;}
+function updateAnalysisTables(){var c=document.getElementById('analysisTables'),h='';DB_TYPES.forEach(function(dt){var ta=getMediaDOWTable(dt);if(!hasTableData(ta))return;var am=getMediaDOWTableByPeriod(dt,'오전'),pm=getMediaDOWTableByPeriod(dt,'오후');h+='<div class="section"><h3>'+dt+' - 매체별 / 요일별 평균 DB수</h3><p class="section-sub">전체</p>'+wrapTable(buildTableHtml(ta));if(hasTableData(am))h+='<p class="section-sub">오전</p>'+wrapTable(buildTableHtml(am));if(hasTableData(pm))h+='<p class="section-sub">오후</p>'+wrapTable(buildTableHtml(pm));h+='</div>';});h+=buildPackageMediaSection();c.innerHTML=h;}
+
+// ======================== 패키지×매체 (최근 한주) ========================
+var PKG_COLS=['더위크','결합','일본어','중국어','스페인어','프랑스어'];
+var PKG_MEDIA_ROWS=['GFA','카카오','메타','GDN','당근'];
+function classifyPackage(mc,dbType){
+    if(mc&&/(^|_)tw(_|$)/i.test(mc))return'더위크';
+    if(SEC_LANG_TYPES.indexOf(dbType)>=0)return dbType;
+    return'결합';
+}
+function getRecentWeekRange(){
+    var lastDate=null;
+    allData.forEach(function(d){if(d.dateStr){var dd=new Date(d.dateStr+'T00:00:00');if(!lastDate||dd>lastDate)lastDate=dd;}});
+    if(!lastDate)return null;
+    var startDate=new Date(lastDate);startDate.setDate(startDate.getDate()-6);
+    return{start:startDate,end:lastDate,startStr:formatDate(startDate),endStr:formatDate(lastDate)};
+}
+function getPackageMediaBreakdown(){
+    var range=getRecentWeekRange();if(!range)return null;
+    var counts={};
+    PKG_MEDIA_ROWS.forEach(function(m){counts[m]={};PKG_COLS.forEach(function(p){counts[m][p]=0;});});
+    allData.forEach(function(d){
+        if(d.isTimeboard||d.isSpecial)return;
+        if(PKG_MEDIA_ROWS.indexOf(d.media)<0)return;
+        if(d.dateStr<range.startStr||d.dateStr>range.endStr)return;
+        var pkg=classifyPackage(d.mediaCode,d.dbType);
+        counts[d.media][pkg]++;
+    });
+    return{range:range,counts:counts};
+}
+function buildPackageMediaSection(){
+    var bd=getPackageMediaBreakdown();if(!bd)return'';
+    var c=bd.counts,r=bd.range,colSum={},grandTotal=0;
+    PKG_COLS.forEach(function(p){colSum[p]=0;});
+    PKG_MEDIA_ROWS.forEach(function(m){PKG_COLS.forEach(function(p){colSum[p]+=c[m][p];grandTotal+=c[m][p];});});
+    if(!grandTotal)return'';
+    var h='<div class="section"><h3>최근 한주간 패키지별 매체별 DB 유입 <span style="font-size:0.78rem;color:#666;font-weight:500;margin-left:6px;">('+r.startStr+' ~ '+r.endStr+')</span></h3>';
+    // DB수 테이블
+    h+='<p class="section-sub">DB수</p><div class="table-wrap"><table><thead><tr><th>매체</th>';
+    PKG_COLS.forEach(function(p){h+='<th class="num">'+p+'</th>';});
+    h+='<th class="num">합계</th></tr></thead><tbody>';
+    PKG_MEDIA_ROWS.forEach(function(m){
+        var rowSum=0;
+        h+='<tr><td>'+m+'</td>';
+        PKG_COLS.forEach(function(p){var v=c[m][p];rowSum+=v;h+='<td class="num">'+fnd(v)+'</td>';});
+        h+='<td class="num"><strong>'+fn(rowSum)+'</strong></td></tr>';
+    });
+    h+='<tr class="highlight-row"><td>합계</td>';
+    PKG_COLS.forEach(function(p){h+='<td class="num"><strong>'+fn(colSum[p])+'</strong></td>';});
+    h+='<td class="num"><strong>'+fn(grandTotal)+'</strong></td></tr>';
+    h+='</tbody></table></div>';
+    // 비중 테이블
+    h+='<p class="section-sub">비중 (패키지별 100%)</p><div class="table-wrap"><table><thead><tr><th>매체</th>';
+    PKG_COLS.forEach(function(p){h+='<th class="num">'+p+'</th>';});
+    h+='</tr></thead><tbody>';
+    PKG_MEDIA_ROWS.forEach(function(m){
+        h+='<tr><td>'+m+'</td>';
+        PKG_COLS.forEach(function(p){var v=c[m][p],pct=colSum[p]>0?(v/colSum[p]*100):0;h+='<td class="num">'+(pct>0?pct.toFixed(1)+'%':'-')+'</td>';});
+        h+='</tr>';
+    });
+    h+='<tr class="highlight-row"><td>합계</td>';
+    PKG_COLS.forEach(function(p){h+='<td class="num"><strong>'+(colSum[p]>0?'100.0%':'-')+'</strong></td>';});
+    h+='</tr></tbody></table></div>';
+    // 더위크:결합 비율
+    var tw=colSum['더위크']||0,gh=colSum['결합']||0,tgTotal=tw+gh;
+    if(tgTotal>0){
+        var twPct=(tw/tgTotal*100).toFixed(1),ghPct=(gh/tgTotal*100).toFixed(1);
+        h+='<p style="margin-top:14px;font-size:0.95rem;font-weight:600;color:#0d47a1;padding:12px 14px;background:#f0f6ff;border-left:4px solid #2563eb;border-radius:6px;">더위크 : 결합 = '+twPct+'% : '+ghPct+'% <span style="font-size:0.82rem;color:#555;font-weight:500;margin-left:8px;">(더위크 '+fn(tw)+' / 결합 '+fn(gh)+')</span></p>';
+    }
+    h+='</div>';
+    return h;
+}
 
 function buildPredRow(l,vs,hl){var rt=vs.reduce(function(a,b){return a+b;},0);return'<tr'+(hl?' class="highlight-row"':'')+'><td>'+l+'</td>'+vs.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';}
 function makeTH(firstCol,labels){return'<thead><tr><th>'+firstCol+'</th>'+labels.map(function(l){return'<th class="num">'+l+'</th>';}).join('')+'<th class="num">합계</th></tr></thead>';}
