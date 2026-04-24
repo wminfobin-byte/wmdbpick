@@ -1798,7 +1798,7 @@ function updateAnalysisTables(){var c=document.getElementById('analysisTables'),
 var PKG_COLS=['더위크','결합','일본어','중국어','스페인어','프랑스어'];
 var PKG_MEDIA_ROWS=['GFA','카카오','메타','GDN','당근'];
 function classifyPackage(mc,dbType){
-    if(mc&&/(^|_)tw(_|$)/i.test(mc))return'더위크';
+    if(mc&&/(^|_)tw/i.test(mc))return'더위크';
     if(SEC_LANG_TYPES.indexOf(dbType)>=0)return dbType;
     return'결합';
 }
@@ -1828,7 +1828,7 @@ function buildPackageMediaSection(){
     PKG_COLS.forEach(function(p){colSum[p]=0;});
     PKG_MEDIA_ROWS.forEach(function(m){PKG_COLS.forEach(function(p){colSum[p]+=c[m][p];grandTotal+=c[m][p];});});
     if(!grandTotal)return'';
-    var h='<div class="section"><h3>최근 한주간 패키지별 매체별 DB 유입 <span style="font-size:0.78rem;color:#666;font-weight:500;margin-left:6px;">('+r.startStr+' ~ '+r.endStr+')</span></h3>';
+    var h='<div class="section"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;"><h3 style="margin:0;">최근 한주간 패키지별 매체별 DB 유입 <span style="font-size:0.78rem;color:#666;font-weight:500;margin-left:6px;">('+r.startStr+' ~ '+r.endStr+')</span></h3><button class="btn-download" onclick="downloadPackageMediaExcel()">엑셀 다운로드</button></div>';
     // DB수 테이블
     h+='<p class="section-sub">DB수</p><div class="table-wrap"><table><thead><tr><th>매체</th>';
     PKG_COLS.forEach(function(p){h+='<th class="num">'+p+'</th>';});
@@ -1863,6 +1863,69 @@ function buildPackageMediaSection(){
     }
     h+='</div>';
     return h;
+}
+function downloadPackageMediaExcel(){
+    var bd=getPackageMediaBreakdown();
+    if(!bd){alert('데이터가 없습니다.');return;}
+    var c=bd.counts,r=bd.range,colSum={},grandTotal=0;
+    PKG_COLS.forEach(function(p){colSum[p]=0;});
+    PKG_MEDIA_ROWS.forEach(function(m){PKG_COLS.forEach(function(p){colSum[p]+=c[m][p];grandTotal+=c[m][p];});});
+    if(!grandTotal){alert('집계할 데이터가 없습니다.');return;}
+    var aoa=[];
+    aoa.push(['최근 한주간 패키지별 매체별 DB 유입 ('+r.startStr+' ~ '+r.endStr+')']);
+    aoa.push([]);
+    aoa.push(['[DB수]']);
+    aoa.push(['매체'].concat(PKG_COLS).concat(['합계']));
+    PKG_MEDIA_ROWS.forEach(function(m){
+        var rowSum=0,row=[m];
+        PKG_COLS.forEach(function(p){var v=c[m][p];rowSum+=v;row.push(v);});
+        row.push(rowSum);aoa.push(row);
+    });
+    aoa.push(['합계'].concat(PKG_COLS.map(function(p){return colSum[p];})).concat([grandTotal]));
+    aoa.push([]);
+    aoa.push(['[비중 - 패키지별 100%]']);
+    aoa.push(['매체'].concat(PKG_COLS));
+    var pctStart=aoa.length;
+    PKG_MEDIA_ROWS.forEach(function(m){
+        var row=[m];
+        PKG_COLS.forEach(function(p){var v=c[m][p];row.push(colSum[p]>0?(v/colSum[p]):0);});
+        aoa.push(row);
+    });
+    aoa.push(['합계'].concat(PKG_COLS.map(function(p){return colSum[p]>0?1:0;})));
+    var pctEnd=aoa.length-1;
+    var tw=colSum['더위크']||0,gh=colSum['결합']||0,tgTotal=tw+gh,ratioStart=-1;
+    if(tgTotal>0){
+        aoa.push([]);
+        aoa.push(['[더위크 : 결합 비율]']);
+        aoa.push(['구분','건수','비중']);
+        ratioStart=aoa.length;
+        aoa.push(['더위크',tw,tw/tgTotal]);
+        aoa.push(['결합',gh,gh/tgTotal]);
+    }
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    var range=XLSX.utils.decode_range(ws['!ref']);
+    for(var R=range.s.r;R<=range.e.r;R++){
+        for(var C=range.s.c;C<=range.e.c;C++){
+            var addr=XLSX.utils.encode_cell({r:R,c:C}),cell=ws[addr];
+            if(cell&&typeof cell.v==='number'&&!isNaN(cell.v)){cell.t='n';cell.z='#,##0';}
+        }
+    }
+    for(var R=pctStart;R<=pctEnd;R++){
+        for(var C=1;C<=PKG_COLS.length;C++){
+            var addr=XLSX.utils.encode_cell({r:R,c:C}),cell=ws[addr];
+            if(cell&&typeof cell.v==='number'){cell.z='0.0%';}
+        }
+    }
+    if(ratioStart>=0){
+        for(var R=ratioStart;R<ratioStart+2;R++){
+            var addr=XLSX.utils.encode_cell({r:R,c:2}),cell=ws[addr];
+            if(cell&&typeof cell.v==='number'){cell.z='0.0%';}
+        }
+    }
+    ws['!cols']=[{wch:14}].concat(PKG_COLS.map(function(){return{wch:12};})).concat([{wch:12}]);
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'패키지별 매체별 DB 유입');
+    XLSX.writeFile(wb,'패키지별_매체별_DB유입_'+r.startStr+'_'+r.endStr+'.xlsx');
 }
 
 function buildPredRow(l,vs,hl){var rt=vs.reduce(function(a,b){return a+b;},0);return'<tr'+(hl?' class="highlight-row"':'')+'><td>'+l+'</td>'+vs.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';}
