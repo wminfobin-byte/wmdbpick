@@ -602,6 +602,12 @@ function applyAuthUI(){
 // ======================== State ========================
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
+// 로컬 변경 추적 (localStorage에 영속화)
+var localDirty=localStorage.getItem('localDirty')==='1';
+var _suppressDirty=false;
+function markDirty(){if(_suppressDirty)return;localDirty=true;try{localStorage.setItem('localDirty','1');}catch(e){}updateDirtyBadge();}
+function clearDirty(){localDirty=false;try{localStorage.removeItem('localDirty');}catch(e){}updateDirtyBadge();}
+function updateDirtyBadge(){var b=document.getElementById('btnSaveServer');if(!b)return;if(b.disabled&&b.textContent!=='동기화'&&b.textContent!=='● 동기화')return;b.textContent=localDirty?'● 동기화':'동기화';}
 // 수동 조정: 계열별 퍼센트 레벨(-2~+2) + 주 총량 오프셋(개)
 var manualAdjust={'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
 // 분배 여부 토글: [토,일,월,화,수,목,금] — true=분배일, false=비분배일(이월)
@@ -692,6 +698,7 @@ function slimRecord(d){return{ds:d.dateStr,dw:d.dayOfWeek,mc:d.mediaCode,m:d.med
 function expandRecord(d){return{inflowDate:new Date(d.ds+'T00:00:00'),dateStr:d.ds,dayOfWeek:d.dw,mediaCode:d.mc,media:d.m,dbType:d.dt,dbGroup:classifyDBGroup(d.dt),isTimeboard:d.tb,isSpecial:d.sp,broadcastHour:d.bh,customerKey:d.ck,batchDate:d.bd||d.ds,batchPeriod:d.bp||'오전',batchDayOfWeek:d.bw!==undefined?d.bw:d.dw,fileName:d.fn||'',age:d.ag!==undefined&&d.ag!==null?String(d.ag):''};}
 
 async function saveToStorage(){
+    markDirty();
     try{
         await idbPut('dbData',allData.map(slimRecord));
         await idbPut('dbFiles',uploadedFiles);
@@ -728,6 +735,7 @@ async function manualPurge(){
     updateAll();updateModalUI();
 }
 async function saveAttendance(){
+    markDirty();
     try{
         await idbPut('attendData',attendanceData);
         await idbPut('attendFiles',attendanceFiles);
@@ -756,6 +764,7 @@ function saveTierConfig(){
             return el?parseInt(el.value)||0:0;
         });
     });
+    markDirty();
     idbPut('tierConfig',tierConfig);
 }
 async function loadFromStorage(onProgress){
@@ -805,7 +814,7 @@ function getPredDateLabels(){
     for(var i=0;i<7;i++){var d=new Date(nw.start);d.setDate(d.getDate()+i);labels.push((d.getMonth()+1)+'/'+d.getDate()+'('+DAY_NAMES[d.getDay()]+')');}
     return labels;
 }
-function saveWorkingDays(){idbPut('workingDays',workingDayToggle);}
+function saveWorkingDays(){markDirty();idbPut('workingDays',workingDayToggle);}
 function toggleWorkingDay(idx){
     workingDayToggle[idx]=!workingDayToggle[idx];
     saveWorkingDays();
@@ -967,11 +976,12 @@ async function removeActualFile(idx){
     if(!confirm(fn+' 실제 유입 데이터를 삭제하시겠습니까?'))return;
     actualInflowFiles.splice(idx,1);
     actualInflowData=[];
+    markDirty();
     await idbPut('actualInflowData',actualInflowData);
     await idbPut('actualInflowFiles',actualInflowFiles);
     updateAll();updateModalUI();
 }
-async function clearAllData(){if(!confirm('모든 데이터를 초기화하시겠습니까?'))return;allData=[];uploadedFiles=[];schedules=[];attendanceData=[];attendanceFiles=[];attendanceMonth='';tbspData=[];tbspFiles=[];actualInflowData=[];actualInflowFiles=[];await idbClear();updateAll();updateModalUI();}
+async function clearAllData(){if(!confirm('모든 데이터를 초기화하시겠습니까?'))return;allData=[];uploadedFiles=[];schedules=[];attendanceData=[];attendanceFiles=[];attendanceMonth='';tbspData=[];tbspFiles=[];actualInflowData=[];actualInflowFiles=[];await idbClear();clearDirty();try{localStorage.removeItem('lastSyncTime');}catch(e){}updateAll();updateModalUI();}
 
 // ======================== Actual Inflow Data ========================
 function processActualInflowFile(file){
@@ -1020,6 +1030,7 @@ async function handleActualInflowFile(file){
         await new Promise(function(r2){setTimeout(r2,30);});
         actualInflowData=r.records;actualInflowFiles=[r.fileName];
         try{purgeOldData();}catch(e){}
+        markDirty();
         await idbPut('actualInflowData',actualInflowData);
         await idbPut('actualInflowFiles',actualInflowFiles);
         updateLoading(90,'화면 업데이트 중...');
@@ -1699,8 +1710,8 @@ function sortSchedules(){
         return aHour-bHour;
     });
 }
-function saveSchedules(){idbPut('schedules',schedules);}
-function saveManualAdjust(){idbPut('manualAdjust',manualAdjust);}
+function saveSchedules(){markDirty();idbPut('schedules',schedules);}
+function saveManualAdjust(){markDirty();idbPut('manualAdjust',manualAdjust);}
 function removeSchedule(id){if(editingScheduleId===id)cancelEdit();schedules=schedules.filter(function(s){return s.id!==id;});saveSchedules();updateScheduleUI();updateTotalPrediction();}
 function clearAllSchedules(){if(!schedules.length||!confirm('모든 스케줄을 삭제하시겠습니까?'))return;schedules=[];saveSchedules();updateScheduleUI();updateTotalPrediction();}
 function getScheduleDistDay(s){return(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR)?(s.day+1)%7:s.day;}
@@ -1735,6 +1746,7 @@ function updateScheduleUI(){
 function updateAll(){
     var has=allData.length>0;
     document.getElementById('btnSaveServer').style.display=(has&&isLoggedIn)?'':'none';
+    updateDirtyBadge();
     if(!has){
         document.getElementById('analysisLoading').style.display='none';
         document.getElementById('predictionLoading').style.display='none';
@@ -3102,53 +3114,105 @@ async function gzipDecompress(b64){
     return await new Response(stream).text();
 }
 
-async function saveToGitHub(){
-    if(!allData.length){alert('저장할 데이터가 없습니다.');return;}
+async function saveToGitHub(auto){
+    if(!allData.length){if(!auto)alert('저장할 데이터가 없습니다.');return;}
     var token=getGHToken();
     if(!token){
+        if(auto)return;
         token=prompt('GitHub Personal Access Token을 입력하세요.\n(최초 1회만 입력하면 저장됩니다)\n\n생성: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → repo 권한 체크');
         if(!token)return;
         setGHToken(token);
     }
     var btn=document.getElementById('btnSaveServer');
-    btn.textContent='저장 중...';btn.disabled=true;
+    if(btn){btn.textContent='확인 중...';btn.disabled=true;}
+    // Pull-before-push: 원격이 더 최신이면 충돌 가능
     try{
+        var checkResp=await fetch('data.json?t='+Date.now());
+        if(checkResp.ok){
+            var checkRaw=await checkResp.json();
+            var checkPl=checkRaw.z?JSON.parse(await gzipDecompress(checkRaw.z)):checkRaw;
+            var remoteTs=checkPl.lastSyncTime||'';
+            var localTs=localStorage.getItem('lastSyncTime')||'';
+            if(remoteTs&&localTs&&remoteTs>localTs){
+                if(auto){
+                    console.warn('auto-sync 스킵: 원격이 더 최신 (remote '+remoteTs+' > local '+localTs+')');
+                    if(btn){btn.textContent='동기화';btn.disabled=false;updateDirtyBadge();}
+                    return;
+                }
+                if(localDirty){
+                    var choice=confirm('원격에 더 최신 버전이 있습니다 ('+remoteTs+').\n\n[확인] 내 로컬 변경을 업로드 (원격 덮어쓰기)\n[취소] 원격을 다운로드 (내 변경 삭제)');
+                    if(!choice){
+                        await loadFromJSON();
+                        try{updateAll();updateModalUI();}catch(e){}
+                        if(btn){btn.textContent='동기화';btn.disabled=false;updateDirtyBadge();}
+                        return;
+                    }
+                }else{
+                    await loadFromJSON();
+                    try{updateAll();updateModalUI();}catch(e){}
+                    if(btn){btn.textContent='동기화';btn.disabled=false;updateDirtyBadge();}
+                    return;
+                }
+            }
+        }
+    }catch(e){console.error('pull-before-push check 실패:',e);}
+    if(btn){btn.textContent='저장 중...';}
+    async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
         var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,tbspData:tbspData,tbspFiles:tbspFiles,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         var wrapper=JSON.stringify({z:compressed});
         var content=btoa(unescape(encodeURIComponent(wrapper)));
-        var sha='';
-        try{
-            var r=await fetch('https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_PATH,{headers:{'Authorization':'token '+token}});
-            if(r.ok){var j=await r.json();sha=j.sha;}
-        }catch(e){}
-        var body={message:'data: '+new Date().toLocaleString('ko-KR'),content:content};
-        if(sha)body.sha=sha;
-        var resp=await fetch('https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_PATH,{
-            method:'PUT',
-            headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
-            body:JSON.stringify(body)
-        });
+        async function getSha(){
+            try{
+                var r=await fetch('https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_PATH+'?t='+Date.now(),{headers:{'Authorization':'token '+token}});
+                if(r.ok){var j=await r.json();return j.sha||'';}
+            }catch(e){}
+            return'';
+        }
+        async function putOnce(sha){
+            var body={message:'data: '+new Date().toLocaleString('ko-KR'),content:content};
+            if(sha)body.sha=sha;
+            return fetch('https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_PATH,{
+                method:'PUT',
+                headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
+                body:JSON.stringify(body)
+            });
+        }
+        var sha=await getSha();
+        var resp=await putOnce(sha);
+        // 409 (sha 불일치): 다른 브라우저가 push 함 → 한번만 재시도
+        if(resp.status===409){
+            var sha2=await getSha();
+            if(sha2&&sha2!==sha)resp=await putOnce(sha2);
+        }
+        return{resp:resp,syncTs:syncTs};
+    }
+    try{
+        var result=await _doPush();
+        var resp=result.resp;
         if(resp.ok){
-            updateLastSyncTime();
-            btn.textContent='완료';btn.disabled=true;
-            setTimeout(function(){btn.textContent='동기화';btn.disabled=false;},2000);
+            updateLastSyncTime(result.syncTs);
+            clearDirty();
+            if(btn){btn.textContent='완료';btn.disabled=true;setTimeout(function(){btn.textContent='동기화';btn.disabled=false;updateDirtyBadge();},2000);}
             return;
         }else{
-            var err=await resp.json();
-            if(resp.status===401){setGHToken('');alert('토큰이 유효하지 않습니다. 다시 시도해주세요.');}
-            else alert('저장 실패: '+(err.message||resp.status));
+            var err={};try{err=await resp.json();}catch(e){}
+            if(resp.status===401){setGHToken('');if(!auto)alert('토큰이 유효하지 않습니다. 다시 시도해주세요.');}
+            else if(!auto)alert('저장 실패: '+(err.message||resp.status));
+            else console.warn('auto-sync 저장 실패:',resp.status,err.message);
         }
-    }catch(e){alert('저장 오류: '+e.message);}
-    btn.textContent='동기화';btn.disabled=false;
+    }catch(e){if(!auto)alert('저장 오류: '+e.message);else console.warn('auto-sync 오류:',e.message);}
+    if(btn){btn.textContent='동기화';btn.disabled=false;updateDirtyBadge();}
 }
 
 // ======================== Last Sync Time ========================
-function updateLastSyncTime(){
-    var now=new Date();
-    var ts=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+function updateLastSyncTime(ts){
+    if(!ts){
+        var now=new Date();
+        ts=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+    }
     localStorage.setItem('lastSyncTime',ts);
     var el=document.getElementById('lastSyncTime');
     if(el){el.textContent='최종 동기화 '+ts;el.style.display='';}
@@ -3159,10 +3223,28 @@ function loadLastSyncTime(){
 }
 
 // ======================== Auto Sync (5min) ========================
-setInterval(function(){
+// - 로컬 변경 있음(dirty): push 시도 (pull-before-push로 충돌 회피)
+// - 로컬 변경 없음: 원격이 더 최신이면 조용히 pull (다른 브라우저 동기화 반영)
+setInterval(async function(){
     if(!allData.length||!getGHToken()||!isLoggedIn)return;
     var btn=document.getElementById('btnSaveServer');
-    if(btn&&!btn.disabled)saveToGitHub();
+    if(btn&&btn.disabled)return;
+    if(localDirty){
+        saveToGitHub(true);
+    }else{
+        try{
+            var resp=await fetch('data.json?t='+Date.now());
+            if(!resp.ok)return;
+            var raw=await resp.json();
+            var pl=raw.z?JSON.parse(await gzipDecompress(raw.z)):raw;
+            var remoteTs=pl.lastSyncTime||'';
+            var localTs=localStorage.getItem('lastSyncTime')||'';
+            if(remoteTs&&localTs&&remoteTs>localTs){
+                await loadFromJSON();
+                try{updateAll();updateModalUI();}catch(e){}
+            }
+        }catch(e){}
+    }
 },5*60*1000);
 
 async function loadFromJSON(){
@@ -3193,16 +3275,20 @@ async function loadFromJSON(){
             if(payload.manualAdjust)manualAdjust=Object.assign({'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},payload.manualAdjust);
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
+            _suppressDirty=true;
             try{
-                await saveToStorage();
-                await idbPut('schedules',schedules);
-                await idbPut('attendData',attendanceData);
-                await idbPut('attendFiles',attendanceFiles);
-                await idbPut('attendMonth',attendanceMonth);
-                await idbPut('actualInflowData',actualInflowData);
-                await idbPut('actualInflowFiles',actualInflowFiles);
-                await idbPut('manualAdjust',manualAdjust);
-            }catch(e){console.error('원격 동기화 영속화 실패:',e);}
+                try{
+                    await saveToStorage();
+                    await idbPut('schedules',schedules);
+                    await idbPut('attendData',attendanceData);
+                    await idbPut('attendFiles',attendanceFiles);
+                    await idbPut('attendMonth',attendanceMonth);
+                    await idbPut('actualInflowData',actualInflowData);
+                    await idbPut('actualInflowFiles',actualInflowFiles);
+                    await idbPut('manualAdjust',manualAdjust);
+                }catch(e){console.error('원격 동기화 영속화 실패:',e);}
+            }finally{_suppressDirty=false;}
+            clearDirty();
             return true;
         }
     }catch(e){}
@@ -3231,8 +3317,8 @@ function setInitProgress(pct){
     await setInitProgress(20);
     await loadFromStorage(setInitProgress);
     await setInitProgress(80);
-    // 항상 원격 동기화 시도 (타임스탬프 비교로 불필요한 교체는 내부에서 스킵)
-    await loadFromJSON();
+    // 원격 동기화: 로컬 미동기화 변경분이 없을 때만 pull (있으면 auto-sync가 push 처리)
+    if(!localDirty||!allData.length){await loadFromJSON();}
     // 보관 기간 초과 데이터 자동 정리 (로드 직후, 렌더 전)
     try{await purgeAndPersist();}catch(e){console.error('purge error:',e);}
     await setInitProgress(90);
