@@ -3173,6 +3173,13 @@ async function loadFromJSON(){
         var payload=raw;
         if(raw.z){payload=JSON.parse(await gzipDecompress(raw.z));}
         if(payload.dbData&&payload.dbData.length){
+            // 로컬 데이터가 있고 타임스탬프가 원격보다 같거나 최신이면 스킵
+            // (단일 브라우저 업로드→새로고침 시 로컬 유지, 다른 브라우저 sync 반영은 수신)
+            if(allData.length){
+                var localTs=localStorage.getItem('lastSyncTime')||'';
+                var remoteTs=payload.lastSyncTime||'';
+                if(localTs&&remoteTs&&localTs>=remoteTs)return false;
+            }
             allData=payload.dbData.map(expandRecord);
             uploadedFiles=payload.dbFiles||[];
             if(payload.schedules)schedules=payload.schedules;
@@ -3185,6 +3192,17 @@ async function loadFromJSON(){
             if(payload.actualInflowFiles)actualInflowFiles=payload.actualInflowFiles;
             if(payload.manualAdjust)manualAdjust=Object.assign({'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},payload.manualAdjust);
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
+            // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
+            try{
+                await saveToStorage();
+                await idbPut('schedules',schedules);
+                await idbPut('attendData',attendanceData);
+                await idbPut('attendFiles',attendanceFiles);
+                await idbPut('attendMonth',attendanceMonth);
+                await idbPut('actualInflowData',actualInflowData);
+                await idbPut('actualInflowFiles',actualInflowFiles);
+                await idbPut('manualAdjust',manualAdjust);
+            }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             return true;
         }
     }catch(e){}
@@ -3213,7 +3231,8 @@ function setInitProgress(pct){
     await setInitProgress(20);
     await loadFromStorage(setInitProgress);
     await setInitProgress(80);
-    if(!allData.length){await loadFromJSON();}
+    // 항상 원격 동기화 시도 (타임스탬프 비교로 불필요한 교체는 내부에서 스킵)
+    await loadFromJSON();
     // 보관 기간 초과 데이터 자동 정리 (로드 직후, 렌더 전)
     try{await purgeAndPersist();}catch(e){console.error('purge error:',e);}
     await setInitProgress(90);
