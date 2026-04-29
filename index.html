@@ -713,6 +713,7 @@ function purgeOldData(){
     var dbCut=retentionCutoff(DB_RETENTION_WEEKS),acCut=retentionCutoff(ACTUAL_RETENTION_WEEKS);
     var bDB=allData.length,bAc=actualInflowData.length;
     allData=allData.filter(function(d){return d.dateStr>=dbCut;});
+    invalidateAgg();
     actualInflowData=actualInflowData.filter(function(d){return d.inflowDate>=acCut;});
     var keep={};allData.forEach(function(d){if(d.fileName)keep[d.fileName]=true;});
     uploadedFiles=uploadedFiles.filter(function(f){return keep[f];});
@@ -778,7 +779,7 @@ async function loadFromStorage(onProgress){
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust')
         ]);
-        if(results[0]&&results[0].length)allData=results[0].map(expandRecord);
+        if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
         if(results[3])attendanceFiles=results[3];
@@ -799,6 +800,7 @@ async function loadFromStorage(onProgress){
             var ls=localStorage.getItem('db_forecast_data');
             if(ls){
                 allData=JSON.parse(ls).map(expandRecord);
+                invalidateAgg();
                 uploadedFiles=JSON.parse(localStorage.getItem('db_forecast_files')||'[]');
                 await saveToStorage();
                 localStorage.removeItem('db_forecast_data');
@@ -929,7 +931,7 @@ async function handleFiles(files){
                     nr.push(x);
                 }
             });
-            if(nr.length)allData=allData.concat(nr);
+            if(nr.length){allData=allData.concat(nr);invalidateAgg();}
             if(!isReupload)uploadedFiles.push(r.fileName);
             if(isReupload&&patched>0)dc=-1; // 패치 성공 표시
             else if(isReupload&&patched===0)dc++;
@@ -981,7 +983,7 @@ async function removeActualFile(idx){
     await idbPut('actualInflowFiles',actualInflowFiles);
     updateAll();updateModalUI();
 }
-async function clearAllData(){if(!confirm('모든 데이터를 초기화하시겠습니까?'))return;allData=[];uploadedFiles=[];schedules=[];attendanceData=[];attendanceFiles=[];attendanceMonth='';tbspData=[];tbspFiles=[];actualInflowData=[];actualInflowFiles=[];await idbClear();clearDirty();try{localStorage.removeItem('lastSyncTime');}catch(e){}updateAll();updateModalUI();}
+async function clearAllData(){if(!confirm('모든 데이터를 초기화하시겠습니까?'))return;allData=[];uploadedFiles=[];schedules=[];attendanceData=[];attendanceFiles=[];attendanceMonth='';tbspData=[];tbspFiles=[];actualInflowData=[];actualInflowFiles=[];invalidateAgg();await idbClear();clearDirty();try{localStorage.removeItem('lastSyncTime');}catch(e){}updateAll();updateModalUI();}
 
 // ======================== Actual Inflow Data ========================
 function processActualInflowFile(file){
@@ -1490,9 +1492,41 @@ function removeOutliers(arr){
 function simpleAvg(wv){wv=removeOutliers(wv);if(!wv.length)return 0;return round5(wv.reduce(function(a,b){return a+b;},0)/wv.length);}
 function smartPredict(wv){wv=removeOutliers(wv);if(!wv.length)return 0;if(wv.length===1)return round5(wv[0]);var n=wv.length,a=0.35,ew=wv[0];for(var i=1;i<n;i++)ew=a*wv[i]+(1-a)*ew;var sx=0,sy=0,sxy=0,sx2=0;for(var i=0;i<n;i++){sx+=i;sy+=wv[i];sxy+=i*wv[i];sx2+=i*i;}var dn=n*sx2-sx*sx,sl=dn?((n*sxy-sx*sy)/dn):0;return Math.max(0,round5(0.6*ew+0.4*(ew+sl)));}
 function getWeeklySeriesForDOW(fn,dow,ub){var wm={};allData.forEach(function(d){if(!fn(d))return;var dw=ub?d.batchDayOfWeek:d.dayOfWeek;if(dw!==dow)return;var dk=ub?d.batchDate:d.dateStr;var wk=getWeekStart(dk);wm[wk]=(wm[wk]||0)+1;});return Object.keys(wm).sort().map(function(w){return wm[w];});}
-function getSmartDOWAverageByType(){var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){r[dt][d]=smartPredict(getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===dt;},d,false));});});return r;}
-function getSmartMediaDOWTable(f){var plain=getMediaDOWTable(f);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var s=getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===f&&x.media===m;},d,false);r[m][d]=smartPredict(s);});});return r;}
-function getSmartMediaDOWTableByPeriod(f,p){var plain=getMediaDOWTableByPeriod(f,p);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var s=getWeeklySeriesForDOW(function(x){return!x.isTimeboard&&!x.isSpecial&&x.dbType===f&&x.batchPeriod===p&&x.media===m;},d,true);r[m][d]=smartPredict(s);});});return r;}
+// ===== Aggregation cache (single-pass) =====
+// allData를 한 번만 순회하여 [dbType][media?][period?][dow][weekStart]=count 맵 생성.
+// smart prediction 함수들이 매번 allData.forEach 도는 대신 캐시 lookup으로 처리.
+var aggCache=null,aggDirty=true;
+function invalidateAgg(){aggDirty=true;}
+function ensureAgg(){
+    if(!aggDirty&&aggCache)return;
+    var byDt={},byDtMedia={},byDtMediaPeriod={};
+    var weekStartCache={};
+    function ws(ds){if(weekStartCache[ds])return weekStartCache[ds];var w=getWeekStart(ds);weekStartCache[ds]=w;return w;}
+    allData.forEach(function(d){
+        if(d.isTimeboard||d.isSpecial)return;
+        var dt=d.dbType,m=d.media;
+        var ows=ws(d.dateStr),dow=d.dayOfWeek;
+        if(!byDt[dt])byDt[dt]={};
+        if(!byDt[dt][dow])byDt[dt][dow]={};
+        byDt[dt][dow][ows]=(byDt[dt][dow][ows]||0)+1;
+        if(!byDtMedia[dt])byDtMedia[dt]={};
+        if(!byDtMedia[dt][m])byDtMedia[dt][m]={};
+        if(!byDtMedia[dt][m][dow])byDtMedia[dt][m][dow]={};
+        byDtMedia[dt][m][dow][ows]=(byDtMedia[dt][m][dow][ows]||0)+1;
+        var bws=ws(d.batchDate),bdow=d.batchDayOfWeek,p=d.batchPeriod;
+        if(!byDtMediaPeriod[dt])byDtMediaPeriod[dt]={};
+        if(!byDtMediaPeriod[dt][m])byDtMediaPeriod[dt][m]={};
+        if(!byDtMediaPeriod[dt][m][p])byDtMediaPeriod[dt][m][p]={};
+        if(!byDtMediaPeriod[dt][m][p][bdow])byDtMediaPeriod[dt][m][p][bdow]={};
+        byDtMediaPeriod[dt][m][p][bdow][bws]=(byDtMediaPeriod[dt][m][p][bdow][bws]||0)+1;
+    });
+    aggCache={byDt:byDt,byDtMedia:byDtMedia,byDtMediaPeriod:byDtMediaPeriod};
+    aggDirty=false;
+}
+function _aggSeries(b){if(!b)return [];return Object.keys(b).sort().map(function(w){return b[w];});}
+function getSmartDOWAverageByType(){ensureAgg();var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){var b=aggCache.byDt[dt]&&aggCache.byDt[dt][d];r[dt][d]=smartPredict(_aggSeries(b));});});return r;}
+function getSmartMediaDOWTable(f){ensureAgg();var plain=getMediaDOWTable(f);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMedia[f]&&aggCache.byDtMedia[f][m]&&aggCache.byDtMedia[f][m][d];r[m][d]=smartPredict(_aggSeries(b));});});return r;}
+function getSmartMediaDOWTableByPeriod(f,p){ensureAgg();var plain=getMediaDOWTableByPeriod(f,p);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMediaPeriod[f]&&aggCache.byDtMediaPeriod[f][m]&&aggCache.byDtMediaPeriod[f][m][p]&&aggCache.byDtMediaPeriod[f][m][p][d];r[m][d]=smartPredict(_aggSeries(b));});});return r;}
 function getSmartMediaDOWTableForGroup(dts){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTable(dt);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});});});return r;}
 function getSmartMediaDOWTableByPeriodForGroup(dts,p){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTableByPeriod(dt,p);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});});});return r;}
 
@@ -1531,6 +1565,7 @@ async function removeUploadedFile(idx){
     await new Promise(function(r){setTimeout(r,30);});
     var before=allData.length;
     allData=allData.filter(function(d){return d.fileName!==fileName;});
+    invalidateAgg();
     uploadedFiles.splice(idx,1);
     var removed=before-allData.length;
     updateLoading(70,'저장 중...');
@@ -3274,6 +3309,7 @@ async function loadFromJSON(){
                 if(localTs&&remoteTs&&localTs>=remoteTs)return false;
             }
             allData=payload.dbData.map(expandRecord);
+            invalidateAgg();
             uploadedFiles=payload.dbFiles||[];
             if(payload.schedules)schedules=payload.schedules;
             if(payload.attendanceData)attendanceData=payload.attendanceData;
