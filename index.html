@@ -348,7 +348,7 @@
             <div id="predictionTables"></div>
 
             <div class="section">
-                <h3 style="display:flex;align-items:center;gap:10px;">타임보드 / 스페셜 스케줄 <button onclick="clearAllSchedules()" style="padding:4px 12px;background:#e53935;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;">전체삭제</button></h3>
+                <h3 style="display:flex;align-items:center;gap:10px;">타임보드 / 스페셜 스케줄 <button id="toggleOldBtn" onclick="toggleOldSchedules()" style="display:none;padding:4px 12px;background:#9e9e9e;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;">지난 스케줄 보기</button> <button onclick="clearAllSchedules()" style="padding:4px 12px;background:#e53935;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;">전체삭제</button></h3>
                 <p style="color:#666;font-size:0.85rem;margin-bottom:12px;">5PM 이후 타임보드/스페셜은 자동으로 다음날 분배에 포함</p>
                 <div class="schedule-form">
                     <select id="schedType"><option value="timeboard">타임보드</option><option value="special">스페셜</option></select>
@@ -1545,6 +1545,8 @@ function toggleCollapsible(id){var el=document.getElementById(id);el.classList.t
 
 // ======================== Schedule ========================
 var editingScheduleId=null; // 수정 중인 스케줄 ID
+var showOldSchedules=false; // 오늘 이전 스케줄 표시 여부
+function toggleOldSchedules(){showOldSchedules=!showOldSchedules;updateScheduleUI();}
 function updatePctTotal(){var t=0;DB_TYPES.forEach(function(dt){t+=parseInt(document.getElementById('pct_'+dt).value)||0;});var el=document.getElementById('pctTotal');el.textContent='합계: '+t+'%';el.style.color=t===100?'#2e7d32':'#e53935';}
 function calcSchedule(){
     var type=document.getElementById('schedType').value;
@@ -1721,9 +1723,18 @@ function getScheduleWeekIdx(s){var wd=getNextWeekDates();var dd=getScheduleDistD
 function getScheduleOrigWeekIdx(s){var wd=getNextWeekDates();return s.schedDate?wd.indexOf(s.schedDate):-1;}
 function updateScheduleUI(){
     var tb=document.querySelector('#specialPredTable tbody');
-    if(!schedules.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#999;">추가된 스케줄이 없습니다</td></tr>';return;}
+    var btn=document.getElementById('toggleOldBtn');
+    if(!schedules.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#999;">추가된 스케줄이 없습니다</td></tr>';if(btn)btn.style.display='none';return;}
+    var todayStr=formatDate(new Date());
+    var oldCount=schedules.filter(function(s){return s.schedDate&&s.schedDate<todayStr;}).length;
+    if(btn){
+        if(oldCount>0){btn.style.display='';btn.textContent=showOldSchedules?'지난 스케줄 '+oldCount+'개 숨기기':'지난 스케줄 '+oldCount+'개 보기';}
+        else{btn.style.display='none';}
+    }
+    var visibleSchedules=showOldSchedules?schedules:schedules.filter(function(s){return !s.schedDate||s.schedDate>=todayStr;});
+    if(!visibleSchedules.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#999;">표시할 스케줄이 없습니다 (지난 '+oldCount+'개 숨김)</td></tr>';return;}
     var wd=getNextWeekDates();
-    tb.innerHTML=schedules.map(function(s){
+    tb.innerHTML=visibleSchedules.map(function(s){
         var pp=[],dp=[];DB_TYPES.forEach(function(dt){if(s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');if(s.breakdown[dt]>0)dp.push(dt+' '+fn(s.breakdown[dt]));});
         var manualTag=s.manualDB?'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">수동</span>':'';
         var sd=s.schedDate?new Date(s.schedDate+'T00:00:00'):null;
