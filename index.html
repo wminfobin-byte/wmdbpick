@@ -2035,11 +2035,12 @@ function buildPredSection(title,dts,adjustCat){
     var adjNote=hasAdj?' <span style="font-size:0.72rem;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:10px;font-weight:600;vertical-align:middle;">수동 조정 반영</span>':'';
     var h='<div class="section"><h3>'+title+' - 차주 매체별 예상'+adjNote+'</h3>';
     var bh='',am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
-    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i];if(!workingDayToggle[i]){var v=tAll[m][d]*r;am[i]+=v;return v;}var v=tAM[m][d]*r;am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(round5(v))+'</td>';}).join('')+'<td class="num"><strong>'+fn(round5(rt))+'</strong></td></tr>';});
-    bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+fn(round5(v))+'</strong></td>';}).join('')+'<td class="num"><strong>'+fn(round5(am.reduce(function(a,b){return a+b;},0)))+'</strong></td></tr>';
-    MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(workingDayToggle[i])pm[i]+=tPM[m][d]*ratios[i];});});
-    bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+fnd(round5(v))+'</td>';}).join('')+'<td class="num"><strong>'+fn(round5(pm.reduce(function(a,b){return a+b;},0)))+'</strong></td></tr>';
-    var tv=WEEK_ORDER.map(function(_,i){return round5(am[i]+pm[i]);});
+    // 셀별로 round5 후 합산 → 합계가 표시된 셀들의 정확한 합 (오전 합계 5인데 매체별 0 같은 불일치 방지)
+    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i];var raw=!workingDayToggle[i]?tAll[m][d]*r:tAM[m][d]*r;var v=round5(raw);am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';});
+    bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+fn(v)+'</strong></td>';}).join('')+'<td class="num"><strong>'+fn(am.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
+    MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(workingDayToggle[i])pm[i]+=round5(tPM[m][d]*ratios[i]);});});
+    bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(pm.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
+    var tv=WEEK_ORDER.map(function(_,i){return am[i]+pm[i];});
     bh+=buildPredRow('총 합계',tv,true);
     h+='<div class="table-wrap"><table>'+PTH()+'<tbody>'+bh+'</tbody></table></div></div>';
     return h;
