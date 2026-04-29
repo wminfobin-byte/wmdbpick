@@ -609,7 +609,7 @@ function markDirty(){if(_suppressDirty)return;localDirty=true;try{localStorage.s
 function clearDirty(){localDirty=false;try{localStorage.removeItem('localDirty');}catch(e){}updateDirtyBadge();}
 function updateDirtyBadge(){var b=document.getElementById('btnSaveServer');if(!b)return;if(b.disabled&&b.textContent!=='동기화'&&b.textContent!=='● 동기화')return;b.textContent=localDirty?'● 동기화':'동기화';}
 // 수동 조정: 계열별 퍼센트 레벨(-2~+2) + 주 총량 오프셋(개)
-var manualAdjust={'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
+var manualAdjust={'영어':{level:0,offset:0},'일본어':{level:0,offset:0},'중국어':{level:0,offset:0},'스페인어':{level:0,offset:0},'프랑스어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
 // 분배 여부 토글: [토,일,월,화,수,목,금] — true=분배일, false=비분배일(이월)
 var workingDayToggle=[true,false,true,true,true,true,true];
 // 타임보드/스페셜 참고 데이터 (A열 유입일, B열 매체코드)
@@ -791,7 +791,7 @@ async function loadFromStorage(onProgress){
         if(results[9])tbspFiles=results[9];
         if(results[10])actualInflowData=results[10];
         if(results[11])actualInflowFiles=results[11];
-        if(results[12])manualAdjust=Object.assign({'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},results[12]);
+        if(results[12])manualAdjust=Object.assign({'영어':{level:0,offset:0},'일본어':{level:0,offset:0},'중국어':{level:0,offset:0},'스페인어':{level:0,offset:0},'프랑스어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},results[12]);
     }catch(e){allData=[];uploadedFiles=[];}
     if(onProgress)await onProgress(75);
     // Migrate from localStorage if IndexedDB is empty but localStorage has data
@@ -2013,6 +2013,16 @@ function getAdjustDayRatios(dts,cat){
     var adjusted=applyManualAdjust(raw,cat);
     return raw.map(function(v,i){return v>0?adjusted[i]/v:1;});
 }
+// 다중 DB 유형(예: 제2외국어 그룹)에 대해 각 유형별 수동 조정을 합산해 day ratio 산출
+function getAdjustDayRatiosMulti(dts){
+    var raw=WEEK_ORDER.map(function(){return 0;}),adj=WEEK_ORDER.map(function(){return 0;});
+    dts.forEach(function(dt){
+        var r=getMediaDOWTotal(dt),a=manualAdjust[dt]?applyManualAdjust(r,dt):r.slice();
+        for(var i=0;i<7;i++){raw[i]+=r[i];adj[i]+=a[i];}
+    });
+    return raw.map(function(v,i){return v>0?adj[i]/v:1;});
+}
+function hasGroupAdjust(dts){return dts.some(function(dt){var a=manualAdjust[dt];return a&&(a.level!==0||(Number(a.offset)||0)!==0);});}
 
 function buildPredSection(title,dts,adjustCat){
     dts=Array.isArray(dts)?dts:[dts];
@@ -2020,8 +2030,9 @@ function buildPredSection(title,dts,adjustCat){
     var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
     var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
     if(!hasTableData(tAll))return'';
-    var ratios=getAdjustDayRatios(dts,adjustCat);
-    var adjNote=(adjustCat&&manualAdjust[adjustCat]&&(manualAdjust[adjustCat].level!==0||(Number(manualAdjust[adjustCat].offset)||0)!==0))?' <span style="font-size:0.72rem;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:10px;font-weight:600;vertical-align:middle;">수동 조정 반영</span>':'';
+    var ratios=dts.length>1?getAdjustDayRatiosMulti(dts):getAdjustDayRatios(dts,adjustCat);
+    var hasAdj=dts.length>1?hasGroupAdjust(dts):(adjustCat&&manualAdjust[adjustCat]&&(manualAdjust[adjustCat].level!==0||(Number(manualAdjust[adjustCat].offset)||0)!==0));
+    var adjNote=hasAdj?' <span style="font-size:0.72rem;background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:10px;font-weight:600;vertical-align:middle;">수동 조정 반영</span>':'';
     var h='<div class="section"><h3>'+title+' - 차주 매체별 예상'+adjNote+'</h3>';
     var bh='',am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
     MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i];if(!workingDayToggle[i]){var v=tAll[m][d]*r;am[i]+=v;return v;}var v=tAM[m][d]*r;am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(round5(v))+'</td>';}).join('')+'<td class="num"><strong>'+fn(round5(rt))+'</strong></td></tr>';});
@@ -2046,15 +2057,18 @@ var ADJUST_LEVELS=[
 ];
 var ADJUST_PCT_MAP={'-2':0.7,'-1':0.85,'0':1.0,'1':1.15,'2':1.3};
 
+var ADJUST_CATS=['영어','일본어','중국어','스페인어','프랑스어','톡이즈'];
 function renderManualAdjustUI(){
     var host=document.getElementById('manualAdjustRows');
     if(!host)return;
-    var cats=['영어','제2외국어','톡이즈'];
+    var SEC_SUB={'일본어':1,'중국어':1,'스페인어':1,'프랑스어':1};
     var h='';
-    cats.forEach(function(cat){
+    ADJUST_CATS.forEach(function(cat){
+        if(cat==='일본어')h+='<div style="font-size:0.78rem;color:#0d9488;font-weight:600;padding:6px 4px 2px;">제2외국어 (언어별 설정)</div>';
         var adj=manualAdjust[cat]||{level:0,offset:0};
         var catColor=COLORS[cat]||'#333';
-        h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;flex-wrap:wrap;background:#fafafa;">';
+        var indent=SEC_SUB[cat]?'margin-left:18px;':'';
+        h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;flex-wrap:wrap;background:#fafafa;'+indent+'">';
         h+='<span style="font-weight:600;min-width:72px;color:'+catColor+';font-size:0.9rem;">'+cat+'</span>';
         h+='<div style="display:flex;gap:4px;flex-wrap:wrap;">';
         ADJUST_LEVELS.forEach(function(L){
@@ -2087,7 +2101,7 @@ function setAdjustOffset(cat,v){
 }
 
 function resetManualAdjust(){
-    manualAdjust={'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
+    manualAdjust={'영어':{level:0,offset:0},'일본어':{level:0,offset:0},'중국어':{level:0,offset:0},'스페인어':{level:0,offset:0},'프랑스어':{level:0,offset:0},'톡이즈':{level:0,offset:0}};
     saveManualAdjust();
     updatePrediction();
 }
@@ -2120,9 +2134,8 @@ function applyManualAdjust(dailyVals,cat){
 }
 
 function hasAnyAdjust(){
-    var cats=['영어','제2외국어','톡이즈'];
-    for(var i=0;i<cats.length;i++){
-        var a=manualAdjust[cats[i]];
+    for(var i=0;i<ADJUST_CATS.length;i++){
+        var a=manualAdjust[ADJUST_CATS[i]];
         if(a&&(a.level!==0||(Number(a.offset)||0)!==0))return true;
     }
     return false;
@@ -2133,7 +2146,7 @@ function updateAdjustBadge(){
     if(!el)return;
     if(!hasAnyAdjust()){el.style.display='none';el.textContent='';return;}
     var parts=[];
-    ['영어','제2외국어','톡이즈'].forEach(function(cat){
+    ADJUST_CATS.forEach(function(cat){
         var a=manualAdjust[cat]||{level:0,offset:0};
         if(a.level===0&&!a.offset)return;
         var seg=cat+' ';
@@ -2155,7 +2168,7 @@ function updatePrediction(){
     var c=document.getElementById('predictionTables'),h='';
     h+=buildPredSection('영어','영어','영어');
     h+=buildPredSection('제2외국어',SEC_LANG_TYPES,'제2외국어');
-    SEC_LANG_TYPES.forEach(function(dt){h+=buildPredSection(dt,dt,'제2외국어');});
+    SEC_LANG_TYPES.forEach(function(dt){h+=buildPredSection(dt,dt,dt);});
     h+=buildPredSection('톡이즈','톡이즈','톡이즈');
     c.innerHTML=h;
     renderManualAdjustUI();
@@ -2173,17 +2186,11 @@ function updateTotalPrediction(){
     rd['제2외국어']=applyCarryover(getMediaDOWTotal(SEC_LANG_TYPES));
     rd['톡이즈']=applyCarryover(getMediaDOWTotal('톡이즈'));
     SEC_LANG_TYPES.forEach(function(dt){rd[dt]=applyCarryover(getMediaDOWTotal(dt));});
-    // 수동 조정 (퍼센트 → 오프셋, 요일 패턴 유지). 제2외국어 하위 언어는 비례 스케일링.
-    var origSec=rd['제2외국어'].slice();
+    // 수동 조정 (퍼센트 → 오프셋, 요일 패턴 유지). 제2외국어는 하위 언어 개별 적용 후 합산.
     rd['영어']=applyManualAdjust(rd['영어'],'영어');
-    rd['제2외국어']=applyManualAdjust(rd['제2외국어'],'제2외국어');
     rd['톡이즈']=applyManualAdjust(rd['톡이즈'],'톡이즈');
-    SEC_LANG_TYPES.forEach(function(dt){
-        rd[dt]=rd[dt].map(function(v,i){
-            if(!origSec[i])return v;
-            return round5(v*rd['제2외국어'][i]/origSec[i]);
-        });
-    });
+    SEC_LANG_TYPES.forEach(function(dt){rd[dt]=applyManualAdjust(rd[dt],dt);});
+    rd['제2외국어']=WEEK_ORDER.map(function(_,i){return SEC_LANG_TYPES.reduce(function(s,dt){return s+rd[dt][i];},0);});
     updateAdjustBadge();
     var tbD=WEEK_ORDER.map(function(){return 0;}),spD=WEEK_ORDER.map(function(){return 0;});
     var sc={'영어':WEEK_ORDER.map(function(){return 0;}),'제2외국어':WEEK_ORDER.map(function(){return 0;}),'톡이즈':WEEK_ORDER.map(function(){return 0;})};
@@ -2946,7 +2953,7 @@ function downloadPredExcel(){
     // Sheet 1: 차주 매체별 예상 (수동 조정 반영)
     var pr=[];
     var adjNoteSeg=[];
-    ['영어','제2외국어','톡이즈'].forEach(function(cat){
+    ADJUST_CATS.forEach(function(cat){
         var a=manualAdjust[cat];if(!a)return;
         if(a.level===0&&!a.offset)return;
         var seg=cat+' ';
@@ -2955,13 +2962,13 @@ function downloadPredExcel(){
         adjNoteSeg.push(seg);
     });
     if(adjNoteSeg.length)pr.push(['⚡ 수동 조정 반영: '+adjNoteSeg.join(' / ')]);
-    [{t:'영어',d:'영어',a:'영어'},{t:'제2외국어',d:SEC_LANG_TYPES,a:'제2외국어'},{t:'일본어',d:'일본어',a:'제2외국어'},{t:'중국어',d:'중국어',a:'제2외국어'},{t:'스페인어',d:'스페인어',a:'제2외국어'},{t:'프랑스어',d:'프랑스어',a:'제2외국어'},{t:'톡이즈',d:'톡이즈',a:'톡이즈'}].forEach(function(item){
+    [{t:'영어',d:'영어',a:'영어'},{t:'제2외국어',d:SEC_LANG_TYPES,a:null},{t:'일본어',d:'일본어',a:'일본어'},{t:'중국어',d:'중국어',a:'중국어'},{t:'스페인어',d:'스페인어',a:'스페인어'},{t:'프랑스어',d:'프랑스어',a:'프랑스어'},{t:'톡이즈',d:'톡이즈',a:'톡이즈'}].forEach(function(item){
         var dts=Array.isArray(item.d)?item.d:[item.d];
         var tAM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오전'):getSmartMediaDOWTableByPeriod(dts[0],'오전');
         var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
         var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
         if(!hasTableData(tAll))return;
-        var ratios=getAdjustDayRatios(dts,item.a);
+        var ratios=dts.length>1?getAdjustDayRatiosMulti(dts):getAdjustDayRatios(dts,item.a);
         pr.push([item.t+' - 차주 매체별 예상']);pr.push(hdr);
         var am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
         MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i];if(!workingDayToggle[i]){var v=round5(tAll[m][d]*r);am[i]+=v;return v;}var v=round5(tAM[m][d]*r);am[i]+=v;return v;});pr.push([m].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
@@ -3319,7 +3326,7 @@ async function loadFromJSON(){
             if(payload.tbspFiles)tbspFiles=payload.tbspFiles;
             if(payload.actualInflowData)actualInflowData=payload.actualInflowData;
             if(payload.actualInflowFiles)actualInflowFiles=payload.actualInflowFiles;
-            if(payload.manualAdjust)manualAdjust=Object.assign({'영어':{level:0,offset:0},'제2외국어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},payload.manualAdjust);
+            if(payload.manualAdjust)manualAdjust=Object.assign({'영어':{level:0,offset:0},'일본어':{level:0,offset:0},'중국어':{level:0,offset:0},'스페인어':{level:0,offset:0},'프랑스어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},payload.manualAdjust);
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
