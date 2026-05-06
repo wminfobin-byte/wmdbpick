@@ -636,7 +636,9 @@ var tierConfig = {
     groups:{
         'A':{tiers:[0,1,2,3,4,5],basis:[4,7,13,18,0,0]},
         'B':{tiers:[0,1,2,3,4,5],basis:[0,4,11,22,3,0]},
-        'C':{tiers:[0,1,2,3,4,5],basis:[0,0,0,4,12,34]}
+        'C':{tiers:[0,1,2,3,4,5],basis:[0,0,0,4,12,34]},
+        'D':{tiers:[0,1,2,3,4,5],basis:[0,0,0,0,0,0]},
+        'H':{tiers:[0,1,2,3,4,5],basis:[0,0,0,0,0,0]}
     },
     secUpper:20, secLower:25,
     secWeightUpper:46, secWeightLower:54
@@ -788,7 +790,7 @@ async function loadFromStorage(onProgress){
         if(results[5]){
             tierConfig=results[5];
             if(tierConfig.groups){
-                var _keyMap={'W':'A','E':'B','N':'C','A':'A','B':'B','C':'C'};
+                var _keyMap={'W':'A','E':'B','N':'C','A':'A','B':'B','C':'C','D':'D','H':'H'};
                 var _migrated={};
                 Object.keys(tierConfig.groups).forEach(function(_oldK){
                     var _newK=_keyMap[_oldK]||_oldK;
@@ -797,8 +799,8 @@ async function loadFromStorage(onProgress){
                     (_old.tiers||[]).forEach(function(_t,_i){if(_t>=0&&_t<=5)_basis[_t]=(_old.basis||[])[_i]||0;});
                     _migrated[_newK]={tiers:[0,1,2,3,4,5],basis:_basis};
                 });
-                ['A','B','C'].forEach(function(_k){if(!_migrated[_k])_migrated[_k]={tiers:[0,1,2,3,4,5],basis:[0,0,0,0,0,0]};});
-                tierConfig.groups={'A':_migrated['A'],'B':_migrated['B'],'C':_migrated['C']};
+                ['A','B','C','D','H'].forEach(function(_k){if(!_migrated[_k])_migrated[_k]={tiers:[0,1,2,3,4,5],basis:[0,0,0,0,0,0]};});
+                tierConfig.groups={'A':_migrated['A'],'B':_migrated['B'],'C':_migrated['C'],'D':_migrated['D'],'H':_migrated['H']};
             }
         }
         if(results[6])workingDayToggle=results[6];
@@ -855,7 +857,9 @@ function applyNumFormat(ws){if(!ws||!ws['!ref'])return ws;var range=XLSX.utils.d
 
 // Attendance
 function classifyStaffDB(p){var d=(p.department||'').trim();if(d.includes('제2외국어'))return'제2외국어';if(d.includes('톡이즈'))return'톡이즈';if(d.includes('뇌새김')){var g=(p.group||'').trim();if(g.includes('톡이즈'))return'톡이즈';if(g.includes('제2')||g.includes('2외')||g.includes('일본')||g.includes('중국'))return'제2외국어';var sg=classifyStaffGroup(p);if(sg)return'영어';}return null;}
-function classifyStaffGroup(p){var g=(p.group||'').trim().toUpperCase();if(g.includes('A')||g.includes('W'))return'A';if(g.includes('B')||g.includes('E'))return'B';if(g.includes('C')||g.includes('N'))return'C';return null;}
+// 근태 파일 B열 그룹 → 등급 매핑 (CMS는 아직 구 명칭 사용중)
+// W그룹→A등급, E그룹→B등급, A그룹→C등급, B그룹→D등급, H그룹→H등급, N(레거시)→C등급
+function classifyStaffGroup(p){var g=(p.group||'').trim().toUpperCase();if(!g)return null;if(g.includes('H'))return'H';if(g.includes('W'))return'A';if(g.includes('E'))return'B';if(g.includes('N'))return'C';if(g.includes('A'))return'C';if(g.includes('B'))return'D';return null;}
 function isWorkingStatus(v){if(v===null||v===undefined)return false;var s=String(v).trim();if(s===''||s==='-')return false;if(/^(연|휴|공|병|경|무|파견|교육|출장)/.test(s))return false;return true;}
 // 근태 월이 다르면 해당 카테고리 전원 출근으로 가정
 function getWorkingStaffForDate(ds,cat){
@@ -2545,16 +2549,30 @@ function updateShareTab(){
     }
 
     // ========== Helper: 매체별 예상 요약 + 연령대별 유입량 ==========
+    // 차주예상 탭 buildPredSection 과 동일 규칙: AM/PM 별 round5 후 합산, 수동 조정 비율 반영
     function buildMediaSummary(items,prefix){
         var mh='<div class="share-section" id="'+prefix+'sec-media">';
         mh+='<h3>매체별 예상 요약</h3>';
         items.forEach(function(item){
-            var tAll=item.d.length>1?getSmartMediaDOWTableForGroup(item.d):getSmartMediaDOWTable(item.d[0]);
+            var dts=item.d;
+            var tAM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오전'):getSmartMediaDOWTableByPeriod(dts[0],'오전');
+            var tPM=dts.length>1?getSmartMediaDOWTableByPeriodForGroup(dts,'오후'):getSmartMediaDOWTableByPeriod(dts[0],'오후');
+            var tAll=dts.length>1?getSmartMediaDOWTableForGroup(dts):getSmartMediaDOWTable(dts[0]);
             if(!hasTableData(tAll))return;
+            var ratios=dts.length>1?getAdjustDayRatiosMulti(dts):getAdjustDayRatios(dts,item.cat||dts[0]);
             mh+='<h4>'+item.t+'</h4>';
             mh+='<table class="share-table"><thead><tr><th>매체</th>';pdl.forEach(function(l){mh+='<th>'+l+'</th>';});mh+='<th>합계</th></tr></thead><tbody>';
             var totals=WEEK_ORDER.map(function(){return 0;});
-            MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var v=tAll[m][d];totals[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);if(rt>0)mh+=shareRow(m,vs);});
+            MEDIA_TYPES.forEach(function(m){
+                var vs=WEEK_ORDER.map(function(d,i){
+                    var r=ratios[i];
+                    var v=workingDayToggle[i]?(round5(tAM[m][d]*r)+round5(tPM[m][d]*r)):round5(tAll[m][d]*r);
+                    totals[i]+=v;
+                    return v;
+                });
+                var rt=vs.reduce(function(a,b){return a+b;},0);
+                if(rt>0)mh+=shareRow(m,vs);
+            });
             mh+=shareRow('합계',totals,'row-total');
             mh+='</tbody></table>';
         });
