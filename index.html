@@ -245,6 +245,7 @@
         .compare-toggle-row .compare-label{font-size:0.8rem;color:var(--slate);font-weight:600}
         .diff-positive{color:var(--green);font-weight:600}
         .diff-negative{color:var(--red);font-weight:600}
+        .media-sep{border-right:2px solid var(--slate-light) !important}
         .upload-area-actual{border:2px dashed #c4b5fd;border-radius:10px;padding:12px;text-align:center;background:var(--purple-bg);margin-bottom:8px;transition:all 0.2s;cursor:pointer}
         .upload-area-actual:hover,.upload-area-actual.dragover{border-color:var(--purple);background:#ede9fe}
         .upload-area-actual p{color:var(--slate);font-size:0.78rem}
@@ -1863,7 +1864,189 @@ function buildTableHtml(td){var tt=WEEK_ORDER.map(function(){return 0;});var rh=
 function wrapTable(bh){return'<div class="table-wrap"><table><thead><tr><th>매체</th><th class="num">토</th><th class="num">일</th><th class="num">월</th><th class="num">화</th><th class="num">수</th><th class="num">목</th><th class="num">금</th><th class="num">합계</th></tr></thead><tbody>'+bh+'</tbody></table></div>';}
 function hasTableData(td){return MEDIA_TYPES.some(function(m){return WEEK_ORDER.some(function(d){return td[m][d]>0;});});}
 
-function updateAnalysisTables(){var c=document.getElementById('analysisTables'),h='';DB_TYPES.forEach(function(dt){var ta=getMediaDOWTable(dt);if(!hasTableData(ta))return;var am=getMediaDOWTableByPeriod(dt,'오전'),pm=getMediaDOWTableByPeriod(dt,'오후');h+='<div class="section"><h3>'+dt+' - 매체별 / 요일별 평균 DB수</h3><p class="section-sub">전체</p>'+wrapTable(buildTableHtml(ta));if(hasTableData(am))h+='<p class="section-sub">오전</p>'+wrapTable(buildTableHtml(am));if(hasTableData(pm))h+='<p class="section-sub">오후</p>'+wrapTable(buildTableHtml(pm));h+='</div>';});h+=buildPackageMediaSection();c.innerHTML=h;}
+function updateAnalysisTables(){var c=document.getElementById('analysisTables'),h='';h+=buildWeeklyComparisonSection();DB_TYPES.forEach(function(dt){var ta=getMediaDOWTable(dt);if(!hasTableData(ta))return;var am=getMediaDOWTableByPeriod(dt,'오전'),pm=getMediaDOWTableByPeriod(dt,'오후');h+='<div class="section"><h3>'+dt+' - 매체별 / 요일별 평균 DB수</h3><p class="section-sub">전체</p>'+wrapTable(buildTableHtml(ta));if(hasTableData(am))h+='<p class="section-sub">오전</p>'+wrapTable(buildTableHtml(am));if(hasTableData(pm))h+='<p class="section-sub">오후</p>'+wrapTable(buildTableHtml(pm));h+='</div>';});h+=buildPackageMediaSection();c.innerHTML=h;renderWeeklyComparisonTables();}
+
+// ======================== 주차별 매체/언어별 예상 vs 실제 ========================
+var ANALYSIS_LANGS=['영어','제2외국어','톡이즈'];
+var ANALYSIS_MEDIA=['GFA','카카오','메타','GDN','당근','일반'];
+function classifyMediaForAnalysis(mc){
+    if(!mc)return null;
+    var c=mc.toLowerCase();
+    if(c.includes('naver_tb')||c.includes('naver_sp'))return null;
+    if(c.includes('gfa'))return'GFA';
+    if(c.includes('kakao'))return'카카오';
+    if(c.includes('facebook')||c.includes('insta')||c.includes('meta'))return'메타';
+    if(c.includes('gdn'))return'GDN';
+    if(c.includes('daan'))return'당근';
+    return'일반';
+}
+// 로컬 타임 기준 주차의 토요일 날짜 반환 (기존 getWeekStart는 toISOString 사용으로 KST 환경에서 하루 앞당겨짐)
+function getSatWeekStartLocal(ds){
+    var d=new Date(ds+'T00:00:00');
+    var dw=d.getDay();
+    var diff=(dw===6)?0:(dw+1);
+    var s=new Date(d);s.setDate(d.getDate()-diff);
+    return formatDate(s);
+}
+// 주차×요일×언어×매체×시간대(전체/오전/오후) 실제 유입 집계
+// 주차 키 = 유입일(J열)의 토요일, 시간대 = batchPeriod
+function getDowLangMediaByWeek(){
+    var data={'전체':{},'오전':{},'오후':{}};
+    function ensureCell(bucket,wk,dow){
+        if(!bucket[wk])bucket[wk]={};
+        if(!bucket[wk][dow]){
+            bucket[wk][dow]={};
+            ANALYSIS_LANGS.forEach(function(l){
+                bucket[wk][dow][l]={};
+                ANALYSIS_MEDIA.forEach(function(m){bucket[wk][dow][l][m]=0;});
+            });
+        }
+    }
+    allData.forEach(function(d){
+        if(d.isTimeboard||d.isSpecial)return;
+        var media=classifyMediaForAnalysis(d.mediaCode);
+        if(!media)return;
+        var lang=classifyDBGroup(d.dbType);
+        if(ANALYSIS_LANGS.indexOf(lang)<0)return;
+        var wk=getSatWeekStartLocal(d.dateStr);
+        var dow=new Date(d.dateStr+'T00:00:00').getDay();
+        ensureCell(data['전체'],wk,dow);data['전체'][wk][dow][lang][media]++;
+        var p=d.batchPeriod;
+        if(p==='오전'||p==='오후'){
+            ensureCell(data[p],wk,dow);data[p][wk][dow][lang][media]++;
+        }
+    });
+    return data;
+}
+function formatWeekRangeLabel(satStr){
+    var s=new Date(satStr+'T00:00:00'),f=new Date(s);f.setDate(s.getDate()+6);
+    function md(d){return(d.getMonth()+1)+'/'+String(d.getDate()).padStart(2,'0');}
+    return md(s)+'(토)~'+md(f)+'(금)';
+}
+// 선택 주차 W의 특정 (dow, lang, media)에 대한 예상치
+// = W 이전 주차들 중 해당 dow 데이터가 있던 주들의 카운트 시계열에 smartPredict
+function getDailyForecast(periodData,sortedKeys,selectedWk,dow,lang,media){
+    var idx=sortedKeys.indexOf(selectedWk);
+    if(idx<=0)return null;
+    var prior=[];
+    for(var i=0;i<idx;i++){
+        var w=sortedKeys[i];
+        if(periodData[w]&&periodData[w][dow])prior.push(periodData[w][dow][lang][media]);
+    }
+    if(!prior.length)return null;
+    return smartPredict(prior);
+}
+function buildDailyComparisonForPeriod(periodData,selectedWeek,lastDataDate){
+    var sortedKeys=Object.keys(periodData).sort();
+    var weekStart=new Date(selectedWeek+'T00:00:00');
+    var dayInfo=WEEK_ORDER.map(function(dow,idx){
+        var dd=new Date(weekStart);dd.setDate(weekStart.getDate()+idx);
+        var ds=formatDate(dd);
+        return{dow:dow,idx:idx,dateStr:ds,inFuture:lastDataDate&&ds>lastDataDate,label:WEEK_LABELS[idx]+' '+(dd.getMonth()+1)+'/'+String(dd.getDate()).padStart(2,'0')};
+    });
+    var h='';
+    ANALYSIS_LANGS.forEach(function(lang){
+        h+='<p class="section-sub">'+lang+'</p><div class="table-wrap"><table>';
+        // 헤더 row1: 매체 | 토 ~ 금 | 합계
+        h+='<thead><tr><th rowspan="2" class="media-sep" style="white-space:nowrap;min-width:80px;padding-left:16px;padding-right:16px;">매체</th>';
+        dayInfo.forEach(function(di){
+            var lh=di.label+(di.inFuture?' <span style="font-size:0.65rem;color:var(--slate-light);font-weight:500;">(미도래)</span>':'');
+            h+='<th colspan="3" class="num media-sep" style="text-align:center;background:var(--blue-bg);">'+lh+'</th>';
+        });
+        h+='<th colspan="3" class="num" style="text-align:center;background:var(--gray-100);">합계</th></tr><tr>';
+        // 헤더 row2: 각 일자/합계마다 실제/예상/차이
+        for(var di2=0;di2<dayInfo.length;di2++){h+='<th class="num">실제</th><th class="num">예상</th><th class="num media-sep">차이</th>';}
+        h+='<th class="num">실제</th><th class="num">예상</th><th class="num">차이</th>';
+        h+='</tr></thead><tbody>';
+        // 일자별 합계 누적용
+        var dayAct=dayInfo.map(function(){return 0;});
+        var dayFc=dayInfo.map(function(){return 0;});
+        var dayHasFc=dayInfo.map(function(){return false;});
+        // 매체별 행을 먼저 빌드 (합계 누적도 함께)
+        var mediaRowsHtml='';
+        ANALYSIS_MEDIA.forEach(function(m){
+            mediaRowsHtml+='<tr><td class="media-sep" style="white-space:nowrap;padding-left:16px;padding-right:16px;"><strong>'+m+'</strong></td>';
+            var rAct=0,rFc=0,rHasFc=false;
+            dayInfo.forEach(function(di,dIdx){
+                var act=(periodData[selectedWeek]&&periodData[selectedWeek][di.dow]&&periodData[selectedWeek][di.dow][lang])?periodData[selectedWeek][di.dow][lang][m]:0;
+                var fc=getDailyForecast(periodData,sortedKeys,selectedWeek,di.dow,lang,m);
+                rAct+=act;dayAct[dIdx]+=act;
+                if(fc!==null){rFc+=fc;rHasFc=true;dayFc[dIdx]+=fc;dayHasFc[dIdx]=true;}
+                var actDisplay=di.inFuture?'-':fn(act);
+                var diff=(fc!==null&&!di.inFuture)?(act-fc):null;
+                var diffCls=diff===null?'':(diff>=0?'diff-positive':'diff-negative');
+                var diffStr=diff===null?'-':((diff>=0?'+':'')+fn(diff));
+                mediaRowsHtml+='<td class="num">'+actDisplay+'</td><td class="num">'+(fc===null?'-':fn(fc))+'</td><td class="num media-sep '+diffCls+'">'+diffStr+'</td>';
+            });
+            // 행 합계 (매체별 주간 합계)
+            var rDiff=rHasFc?(rAct-rFc):null;
+            var rDiffCls=rDiff===null?'':(rDiff>=0?'diff-positive':'diff-negative');
+            var rDiffStr=rDiff===null?'-':((rDiff>=0?'+':'')+fn(rDiff));
+            mediaRowsHtml+='<td class="num"><strong>'+fn(rAct)+'</strong></td><td class="num"><strong>'+(rHasFc?fn(rFc):'-')+'</strong></td><td class="num '+rDiffCls+'"><strong>'+rDiffStr+'</strong></td></tr>';
+        });
+        // 합계 행 (일자별 매체 전체 합계) — GFA 위로 먼저 출력
+        h+='<tr class="highlight-row"><td class="media-sep" style="white-space:nowrap;padding-left:16px;padding-right:16px;"><strong>합계</strong></td>';
+        var gAct=0,gFc=0,gHasFc=false;
+        dayInfo.forEach(function(di,dIdx){
+            var a=dayAct[dIdx];
+            var f=dayHasFc[dIdx]?dayFc[dIdx]:null;
+            gAct+=a;if(f!==null){gFc+=f;gHasFc=true;}
+            var actDisplay=di.inFuture?'-':fn(a);
+            var diff=(f!==null&&!di.inFuture)?(a-f):null;
+            var diffCls=diff===null?'':(diff>=0?'diff-positive':'diff-negative');
+            var diffStr=diff===null?'-':((diff>=0?'+':'')+fn(diff));
+            h+='<td class="num"><strong>'+actDisplay+'</strong></td><td class="num"><strong>'+(f===null?'-':fn(f))+'</strong></td><td class="num media-sep '+diffCls+'"><strong>'+diffStr+'</strong></td>';
+        });
+        var gDiff=gHasFc?(gAct-gFc):null;
+        var gDiffCls=gDiff===null?'':(gDiff>=0?'diff-positive':'diff-negative');
+        var gDiffStr=gDiff===null?'-':((gDiff>=0?'+':'')+fn(gDiff));
+        h+='<td class="num"><strong>'+fn(gAct)+'</strong></td><td class="num"><strong>'+(gHasFc?fn(gFc):'-')+'</strong></td><td class="num '+gDiffCls+'"><strong>'+gDiffStr+'</strong></td></tr>';
+        // 매체 행 출력
+        h+=mediaRowsHtml;
+        h+='</tbody></table></div>';
+    });
+    return h;
+}
+function renderWeeklyComparisonTables(){
+    var sel=document.getElementById('weeklyComparisonWeek');
+    var container=document.getElementById('weeklyComparisonTables');
+    if(!sel||!container)return;
+    var selectedWeek=sel.value;
+    var data=getDowLangMediaByWeek();
+    var lastDataDate='';
+    allData.forEach(function(d){if(d.dateStr&&d.dateStr>lastDataDate)lastDataDate=d.dateStr;});
+    var weekEnd=new Date(selectedWeek+'T00:00:00');weekEnd.setDate(weekEnd.getDate()+6);
+    var partial=lastDataDate&&lastDataDate<formatDate(weekEnd);
+    var h='';
+    if(partial)h+='<p style="font-size:0.78rem;color:var(--amber);font-weight:600;margin:0 0 12px 0;">선택 주차는 진행중입니다 (마지막 데이터: '+lastDataDate+')</p>';
+    var periods=[['전체','#0d47a1'],['오전','#1565c0'],['오후','#ef6c00']];
+    periods.forEach(function(p){
+        var key=p[0],color=p[1];
+        h+='<div style="margin-top:18px;padding:12px 14px;background:'+color+'08;border-left:4px solid '+color+';border-radius:6px;"><h4 style="margin:0;font-size:0.95rem;color:'+color+';">'+key+'</h4></div>';
+        h+=buildDailyComparisonForPeriod(data[key],selectedWeek,lastDataDate);
+    });
+    container.innerHTML=h;
+}
+function buildWeeklyComparisonSection(){
+    var data=getDowLangMediaByWeek();
+    var weekSet={};
+    ['전체','오전','오후'].forEach(function(p){Object.keys(data[p]).forEach(function(w){weekSet[w]=true;});});
+    var weekKeys=Object.keys(weekSet).sort();
+    if(weekKeys.length<1)return'';
+    var defaultWeek=weekKeys[weekKeys.length-1];
+    var h='<div class="section"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">';
+    h+='<h3 style="margin:0;">일자별 예상 vs 실제 (주차 선택)</h3>';
+    h+='<div><label style="font-size:0.85rem;font-weight:600;margin-right:8px;color:var(--slate);">주차</label>';
+    h+='<select id="weeklyComparisonWeek" onchange="renderWeeklyComparisonTables()" style="padding:6px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:0.85rem;font-family:var(--font);background:white;">';
+    weekKeys.slice().reverse().forEach(function(wk){
+        var sel=wk===defaultWeek?' selected':'';
+        h+='<option value="'+wk+'"'+sel+'>'+formatWeekRangeLabel(wk)+'</option>';
+    });
+    h+='</select></div></div>';
+    h+='<div id="weeklyComparisonTables"></div>';
+    h+='</div>';
+    return h;
+}
 
 // ======================== 패키지×매체 (최근 한주) ========================
 var PKG_COLS=['더위크','결합','일본어','중국어','스페인어','프랑스어'];
