@@ -1748,16 +1748,15 @@ function buildScheduleTooltipsByGroup(schedType, dbTypes){
 }
 
 function sortSchedules(){
-    var now=new Date();
-    var nowDate=formatDate(now);
-    var nowHour=now.getHours();
+    var nowDate=formatDate(new Date());
     schedules.sort(function(a,b){
         var aDate=a.schedDate||'';
         var bDate=b.schedDate||'';
         var aHour=a.hour!=null?a.hour:0;
         var bHour=b.hour!=null?b.hour:0;
-        var aPast=aDate<nowDate||(aDate===nowDate&&aHour<nowHour);
-        var bPast=bDate<nowDate||(bDate===nowDate&&bHour<nowHour);
+        // 지난 판정은 날짜 기준만 (오늘 항목은 시간 지나도 자기 자리 유지)
+        var aPast=aDate<nowDate;
+        var bPast=bDate<nowDate;
         if(aPast!==bPast)return aPast?1:-1;
         if(aDate!==bDate)return aDate.localeCompare(bDate);
         return aHour-bHour;
