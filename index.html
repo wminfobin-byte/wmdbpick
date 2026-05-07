@@ -1791,14 +1791,17 @@ function updateScheduleUI(){
         var sd=s.schedDate?new Date(s.schedDate+'T00:00:00'):null;
         var dateLabel=sd?((sd.getMonth()+1)+'/'+sd.getDate()+'('+DAY_NAMES[sd.getDay()]+')'):'미상';
         var dtBadge=s.dayType==='주말'?'<span style="display:inline-block;background:#fff3e0;color:#e65100;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">주말</span>':'<span style="display:inline-block;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:8px;font-size:0.68rem;font-weight:600;margin-left:4px;">평일</span>';
-        var isActive=s.schedDate&&wd.indexOf(getScheduleDistDate(s))>=0;
-        var activeBadge=isActive?'':'<span style="display:inline-block;background:#eee;color:#999;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">비활성</span>';
+        // 활성화 기준: 오늘 포함 이후 = 활성, 어제 이전 = 비활성 (차주 예상 영향과 별개로 스케줄 확인 용도)
+        var isActive=s.schedDate&&s.schedDate>=todayStr;
+        var inPredWeek=s.schedDate&&wd.indexOf(getScheduleDistDate(s))>=0;
+        var activeBadge=isActive?'':'<span style="display:inline-block;background:#eee;color:#999;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">지난</span>';
+        var predBadge=(isActive&&inPredWeek)?' <span style="display:inline-block;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:2px;">차주</span>':'';
         var ps=pp.join(' / '),pr=fn(s.totalPredicted)+'건'+(dp.length>1?' ('+dp.join(' / ')+')':'');
         var distDate=getScheduleDistDate(s);
         var distLabel='';
         if(distDate){var dd=new Date(distDate+'T00:00:00');distLabel=(dd.getMonth()+1)+'/'+dd.getDate()+'('+DAY_NAMES[dd.getDay()]+')';if(distDate!==s.schedDate)distLabel+=' <span style="color:#d84315;font-size:0.72rem;">(다음날)</span>';}
         return'<tr style="'+(isActive?'':'opacity:0.5;')+'"><td><span class="badge '+(s.type==='timeboard'?'badge-blue':'badge-orange')+'">'+(s.type==='timeboard'?'타임보드':'스페셜')+'</span></td>'
-            +'<td>'+dateLabel+dtBadge+activeBadge+'</td><td>'+formatHour(s.hour)+'</td><td style="font-size:0.8rem;">'+ps+'</td>'
+            +'<td>'+dateLabel+dtBadge+activeBadge+predBadge+'</td><td>'+formatHour(s.hour)+'</td><td style="font-size:0.8rem;">'+ps+'</td>'
             +'<td class="num">'+pr+manualTag+'</td><td class="num">'+(s.adCost?s.adCost.toLocaleString()+'만':'-')+'</td><td>'+distLabel+'</td>'
             +'<td><span style="color:#1a237e;cursor:pointer;margin-right:8px;" onclick="editSchedule('+s.id+')">수정</span><span style="color:#e53935;cursor:pointer;" onclick="removeSchedule('+s.id+')">삭제</span></td></tr>';
     }).join('');
