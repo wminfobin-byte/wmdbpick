@@ -2525,10 +2525,11 @@ function updateTierPrediction(){
     Object.keys(tierConfig.groups).forEach(function(g){
         var cfg=tierConfig.groups[g];
         var staffPerDay=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g);});
-        gdHtml+='<p class="section-sub">'+g+'등급 (근무: '+staffPerDay.map(function(s,i){return pdl[i].split('(')[1].replace(')','')+(s!==null?s:'?');}).join(' ')+')</p>';
+        gdHtml+='<p class="section-sub">'+g+'등급</p>';
         gdHtml+='<div class="table-wrap"><table><thead><tr><th>계열</th>';
         pdl.forEach(function(l){gdHtml+='<th class="num">'+l+'</th>';});
         gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
+        gdHtml+='<tr style="background:#f9f9f9;color:#666;"><td style="font-size:0.82rem;">근무 인원</td>'+staffPerDay.map(function(s,i){var n=(s==null?'?':String(s));return '<td class="num" style="font-size:0.78rem;">'+pdl[i].replace(/\)$/,', '+n+'명)')+'</td>';}).join('')+'<td class="num">-</td></tr>';
         var grpTotalPerDay=WEEK_ORDER.map(function(){return 0;});
         cfg.tiers.forEach(function(ti,bi){
             var basisRatio=cfg.basis[bi]/groupBasisSum[g]; // 이 그룹 내 계열 비율
@@ -2558,10 +2559,11 @@ function updateTierPrediction(){
 
     // 제2외국어 1인 분배
     var secStaff=wd.map(function(ds){return getWorkingSecStaffForDate(ds);});
-    gdHtml+='<p class="section-sub">제2외국어 (근무: '+secStaff.map(function(s,i){return pdl[i].split('(')[1].replace(')','')+(s!==null?s:'?');}).join(' ')+')</p>';
+    gdHtml+='<p class="section-sub">제2외국어</p>';
     gdHtml+='<div class="table-wrap"><table><thead><tr><th>구분</th>';
     pdl.forEach(function(l){gdHtml+='<th class="num">'+l+'</th>';});
     gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    gdHtml+='<tr style="background:#f9f9f9;color:#666;"><td style="font-size:0.82rem;">근무 인원</td>'+secStaff.map(function(s,i){var n=(s==null?'?':String(s));return '<td class="num" style="font-size:0.78rem;">'+pdl[i].replace(/\)$/,', '+n+'명)')+'</td>';}).join('')+'<td class="num">-</td></tr>';
     ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
         var ppVals=WEEK_ORDER.map(function(_,di){
             var st=secStaff[di];if(!st)return 0;
@@ -2576,10 +2578,11 @@ function updateTierPrediction(){
 
     // 톡이즈 1인 분배
     var talkStaff=wd.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈');});
-    gdHtml+='<p class="section-sub">톡이즈 (근무: '+talkStaff.map(function(s,i){return pdl[i].split('(')[1].replace(')','')+(s!==null?s:'?');}).join(' ')+')</p>';
+    gdHtml+='<p class="section-sub">톡이즈</p>';
     gdHtml+='<div class="table-wrap"><table><thead><tr><th>구분</th>';
     pdl.forEach(function(l){gdHtml+='<th class="num">'+l+'</th>';});
     gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
+    gdHtml+='<tr style="background:#f9f9f9;color:#666;"><td style="font-size:0.82rem;">근무 인원</td>'+talkStaff.map(function(s,i){var n=(s==null?'?':String(s));return '<td class="num" style="font-size:0.78rem;">'+pdl[i].replace(/\)$/,', '+n+'명)')+'</td>';}).join('')+'<td class="num">-</td></tr>';
     var talkPPVals=WEEK_ORDER.map(function(_,di){var st=talkStaff[di];return(st&&st>0)?Math.round(talkEffective[di]/st):0;});
     gdHtml+='<tr class="highlight-row"><td>톡이즈 1인</td>'+talkPPVals.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(talkPPVals.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
     gdHtml+='</tbody></table></div>';
@@ -2785,12 +2788,12 @@ function updateShareTab(){
         gh+='<table class="share-table"><thead><tr><th>등급</th><th>계열</th>';pdl.forEach(function(l){gh+='<th>'+l+'</th>';});gh+='<th>합계</th></tr></thead><tbody>';
         var shareBasisSum={};Object.keys(tierConfig.groups).forEach(function(g){shareBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;});
         Object.keys(tierConfig.groups).forEach(function(g){
-            var cfg=tierConfig.groups[g],staffPD=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;}),grpTotal=WEEK_ORDER.map(function(){return 0;}),isFirst=true;
+            var cfg=tierConfig.groups[g],staffPD=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;}),grpTotal=WEEK_ORDER.map(function(){return 0;});
+            gh+='<tr style="background:#f5f5f5;"><td><strong style="color:#1a237e;">'+g+'등급</strong></td><td style="font-size:0.78rem;color:#666;">근무 인원</td>'+staffPD.map(function(s,i){return '<td style="font-size:0.75rem;color:#555;">'+pdl[i].replace(/\)$/,', '+s+'명)')+'</td>';}).join('')+'<td style="color:#999;">-</td></tr>';
             cfg.tiers.forEach(function(ti,bi){
                 var basisRatio=cfg.basis[bi]/shareBasisSum[g];
                 var ppVals=WEEK_ORDER.map(function(_,di){var weightedTotal=0;Object.keys(tierConfig.groups).forEach(function(g2){var s2=getWorkingStaffByGroupForDate(wd[di],g2)||0;weightedTotal+=s2*(GROUP_WEIGHT[g2]||1);});if(!weightedTotal||!staffPD[di])return 0;var dayTotal=lastPredData.engEffective?lastPredData.engEffective[di]:0;var perPersonTotal=Math.round((dayTotal/weightedTotal)*(GROUP_WEIGHT[g]||1));var pp=Math.round(perPersonTotal*basisRatio);grpTotal[di]+=pp;return pp;});
-                gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'등급</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+staffPD.filter(function(s){return s>0;}).join('/')+'명</span>':'')+'</td>';
-                gh+='<td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';isFirst=false;
+                gh+='<tr><td></td><td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';
             });
             gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td>'+grpTotal.map(function(v){return'<td style="color:#1a237e;">'+fn(v)+'</td>';}).join('')+'<td style="color:#1a237e;"><strong>'+fn(grpTotal.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
         });
@@ -2800,11 +2803,10 @@ function updateShareTab(){
         var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
         var secU=lastPredData.secUpperVals||WEEK_ORDER.map(function(){return 0;}),secL=lastPredData.secLowerVals||WEEK_ORDER.map(function(){return 0;});
         gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>등급</th><th>구분</th>';pdl.forEach(function(l){gh+='<th>'+l+'</th>';});gh+='<th>합계</th></tr></thead><tbody>';
-        var secFirst=true;
+        gh+='<tr style="background:#f5f5f5;"><td><strong style="color:#2e7d32;">제2외국어</strong></td><td style="font-size:0.78rem;color:#666;">근무 인원</td>'+secStaff.map(function(s,i){return '<td style="font-size:0.75rem;color:#555;">'+pdl[i].replace(/\)$/,', '+s+'명)')+'</td>';}).join('')+'<td style="color:#999;">-</td></tr>';
         ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
             var vals=(ti===0?secU:secL);var ppVals=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(vals[di]/secStaff[di]):0;});
-            gh+='<tr><td>'+(secFirst?'<strong style="color:#2e7d32;">제2외국어</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+secStaff.filter(function(s){return s>0;}).join('/')+'명</span>':'')+'</td>';
-            gh+='<td style="color:#666;font-size:0.82rem;">'+tier+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';secFirst=false;
+            gh+='<tr><td></td><td style="color:#666;font-size:0.82rem;">'+tier+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';
         });
         var secPPT=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(secEff[di]/secStaff[di]):0;});
         gh+='<tr style="background:#e8f5e9;font-weight:700;"><td></td><td style="color:#2e7d32;">합계</td>'+secPPT.map(function(v){return'<td style="color:#2e7d32;">'+fn(v)+'</td>';}).join('')+'<td style="color:#2e7d32;"><strong>'+fn(secPPT.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
@@ -2813,9 +2815,9 @@ function updateShareTab(){
         var talkStaff2=wd.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈')||0;});
         var talkEff=lastPredData.talkEffective||WEEK_ORDER.map(function(){return 0;});
         gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>등급</th><th>구분</th>';pdl.forEach(function(l){gh+='<th>'+l+'</th>';});gh+='<th>합계</th></tr></thead><tbody>';
+        gh+='<tr style="background:#f5f5f5;"><td><strong style="color:#7b1fa2;">톡이즈</strong></td><td style="font-size:0.78rem;color:#666;">근무 인원</td>'+talkStaff2.map(function(s,i){return '<td style="font-size:0.75rem;color:#555;">'+pdl[i].replace(/\)$/,', '+s+'명)')+'</td>';}).join('')+'<td style="color:#999;">-</td></tr>';
         var talkPP=WEEK_ORDER.map(function(_,di){return(talkStaff2[di]&&talkStaff2[di]>0)?Math.round(talkEff[di]/talkStaff2[di]):0;});
-        gh+='<tr><td><strong style="color:#7b1fa2;">톡이즈</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+talkStaff2.filter(function(s){return s>0;}).join('/')+'명</span></td>';
-        gh+='<td style="color:#666;font-size:0.82rem;">1인 분배</td>'+talkPP.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(talkPP.reduce(function(a,b){return a+b;},0))+'</td></tr>';
+        gh+='<tr><td></td><td style="color:#666;font-size:0.82rem;">1인 분배</td>'+talkPP.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(talkPP.reduce(function(a,b){return a+b;},0))+'</td></tr>';
         gh+='</tbody></table></div>';
         return gh;
     }
@@ -3024,7 +3026,7 @@ function updateShareTab(){
         tkh+='<table class="share-table"><thead><tr><th>구분</th>';pdl.forEach(function(l){tkh+='<th>'+l+'</th>';});tkh+='<th>합계</th></tr></thead><tbody>';
         tkh+=shareRow('톡이즈 총량',tkEff);
         var tkPP=WEEK_ORDER.map(function(_,di){return(tkStaff[di]&&tkStaff[di]>0)?Math.round(tkEff[di]/tkStaff[di]):0;});
-        tkh+='<tr><td>근무 인원</td>'+tkStaff.map(function(s){return'<td>'+fnd(s)+'</td>';}).join('')+'<td>-</td></tr>';
+        tkh+='<tr style="background:#f5f5f5;"><td style="font-size:0.78rem;color:#666;">근무 인원</td>'+tkStaff.map(function(s,i){return '<td style="font-size:0.75rem;color:#555;">'+pdl[i].replace(/\)$/,', '+(s||0)+'명)')+'</td>';}).join('')+'<td style="color:#999;">-</td></tr>';
         tkh+='<tr class="row-total"><td>1인 분배</td>'+tkPP.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>-</td></tr>';
         tkh+='</tbody></table></div>';
     }
