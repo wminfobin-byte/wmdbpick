@@ -972,7 +972,6 @@ async function handleFiles(files){
 }
 function processAttendanceFile(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(e){try{var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});var ws=wb.Sheets[wb.SheetNames[0]];var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});var ppl=[];for(var i=1;i<rows.length;i++){var row=rows[i];if(!row||row.length<7)continue;var nm=row[4]?String(row[4]).trim():'';if(!nm)continue;var dl={};for(var d=6;d<row.length;d++)dl[d-5]=row[d];ppl.push({department:row[0]?String(row[0]).trim():'',group:row[1]?String(row[1]).trim():'',center:row[2]?String(row[2]).trim():'',team:row[3]?String(row[3]).trim():'',name:nm,joinDate:row[5]||'',daily:dl});}var m=file.name.match(/(\d{4})(\d{2})(\d{2})/);res({fileName:file.name,people:ppl,month:m?m[1]+'-'+m[2]:''});}catch(err){rej(err);}};r.onerror=rej;r.readAsArrayBuffer(file);});}
 async function handleAttendanceFile(file){
-    if(attendanceFiles.indexOf(file.name)>=0){alert('이미 업로드된 근태 파일입니다.');return;}
     showLoading('근태 파일 처리 중...');
     updateLoading(30,file.name+' 분석 중...');
     await new Promise(function(r){setTimeout(r,50);});
