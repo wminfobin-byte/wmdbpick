@@ -3263,17 +3263,19 @@ function downloadPredExcel(){
         XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(ti)),'계열별 예상 유입');
     }
 
-    // Sheet 5: 그룹별 1인 분배
+    // Sheet 5: 등급별 / 계열별 1인 분배 예상
     if(attendanceData.length&&lastPredData.tierDailyEng){
-        var gi=[['등급별 1인 예상 분배 DB수 ('+wl+')']];
+        var gi=[['등급별 / 계열별 1인 분배 예상 ('+wl+')']];
         var wd2=getNextWeekDates();
         var xlBasisSum={};
         Object.keys(tierConfig.groups).forEach(function(g){xlBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;});
+        // 등급별 영어
         Object.keys(tierConfig.groups).forEach(function(g){
             var cfg=tierConfig.groups[g];
             var staffPD=wd2.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;});
-            gi.push([]);gi.push([g+'등급','근무인원'].concat(staffPD));
-            gi.push(['계열'].concat(pdl).concat(['합계']));
+            gi.push([]);gi.push([g+'등급']);
+            var hdrWithStaff=['계열'].concat(pdl.map(function(l,i){return l.replace(/\)$/,', '+staffPD[i]+'명)');})).concat(['합계']);
+            gi.push(hdrWithStaff);
             var grpTotal=WEEK_ORDER.map(function(){return 0;});
             cfg.tiers.forEach(function(tidx,bi){
                 var basisRatio=cfg.basis[bi]/xlBasisSum[g];
@@ -3291,17 +3293,24 @@ function downloadPredExcel(){
         });
         // 제2외국어
         var secStaff=wd2.map(function(ds){return getWorkingSecStaffForDate(ds)||0;});
-        gi.push([]);gi.push(['제2외국어','근무인원'].concat(secStaff));
-        gi.push(['구분'].concat(pdl).concat(['합계']));
+        gi.push([]);gi.push(['제2외국어']);
+        gi.push(['구분'].concat(pdl.map(function(l,i){return l.replace(/\)$/,', '+secStaff[i]+'명)');})).concat(['합계']));
         var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
         var secU=lastPredData.secUpperVals||WEEK_ORDER.map(function(){return 0;}),secL=lastPredData.secLowerVals||WEEK_ORDER.map(function(){return 0;});
-        ['상위','하위'].forEach(function(tier,ti){
+        ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
             var vals=(ti===0?secU:secL);
             var ppVals=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(vals[di]/secStaff[di]):0;});
             gi.push([tier].concat(ppVals).concat([ppVals.reduce(function(a,b){return a+b;},0)]));
         });
         var secPPT=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(secEff[di]/secStaff[di]):0;});
         gi.push(['합계'].concat(secPPT).concat([secPPT.reduce(function(a,b){return a+b;},0)]));
+        // 톡이즈
+        var talkStaff=wd2.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈')||0;});
+        var talkEff=lastPredData.talkEffective||WEEK_ORDER.map(function(){return 0;});
+        gi.push([]);gi.push(['톡이즈']);
+        gi.push(['구분'].concat(pdl.map(function(l,i){return l.replace(/\)$/,', '+talkStaff[i]+'명)');})).concat(['합계']));
+        var talkPP=WEEK_ORDER.map(function(_,di){return(talkStaff[di]&&talkStaff[di]>0)?Math.round(talkEff[di]/talkStaff[di]):0;});
+        gi.push(['톡이즈 1인'].concat(talkPP).concat([talkPP.reduce(function(a,b){return a+b;},0)]));
         XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(gi)),'등급별 1인 분배');
     }
 
