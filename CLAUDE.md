@@ -64,8 +64,7 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 ### 주요 상수
 - `WEEK_ORDER=[6,0,1,2,3,4,5]` — 토요일 시작 (분배 주기)
 - `workingDayToggle=[true,false,true,true,true,true,true]` — 일요일 비분배 (요일 단위 수동 토글)
-- `KR_HOLIDAYS` — 한국 공휴일 다년치(2024~2026). 차주 예상 + 과거 공휴일 학습에 공용. 매년 갱신 필요
-- `HOLIDAY_LEARN_MIN=3` — 평일 공휴일 학습 최소 표본(계열별 distinct 공휴일 일수)
+- `KR_HOLIDAYS` — 한국 공휴일 다년치(2024~2026). 매년 갱신 필요
 
 ### 평일 공휴일 처리 (차주 예상)
 - `holidayClosed` — 날짜 단위 휴무 override (`{'YYYY-MM-DD':true}`). IndexedDB `holidayClosed`에 영구 저장
@@ -75,13 +74,12 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 - 차주 예상 계산은 `workingDayToggle[i]` 직접 참조 대신 `isWorkDay(i)`, DOW 평균 조회는 `effDow(i)`를 사용할 것 (차주 예상·캐리오버·수동조정·공유·엑셀 공통)
 - 타임보드/스페셜 스케줄은 공휴일에도 집행 가능(영향 없음)
 
-### 평일 공휴일 DB량 학습 (비중 방식, 하이브리드)
-- `ensureAgg()`가 평일 공휴일 레코드를 요일 버킷에서 **분리**해 `byDtHoliday`(계열별 공휴일 날짜→건수)에 집계. 따라서 평일 요일 평균은 공휴일에 오염되지 않음
-- `recInflowHoli(d)`/`recBatchHoli(d)` — 레코드가 평일 공휴일 소속인지 판정. 플레인 DOW 테이블(`getDOWAverageByType`/`getMediaDOWTable*`/`get*DOWDateCounts`)·`byDtMediaPeriod`도 동일 제외 적용
-- **비중 학습**: 각 과거 평일 공휴일의 `그날 DB ÷ 전후(가까운 주 4개) 같은 요일 평일 평균` = 비중. 계열별 표본 ≥ `HOLIDAY_LEARN_MIN`이면 이상치 제외 평균을 `aggCache.holidayRatio[계열]`에 저장
-- 스마트 테이블의 **`'H1'`~`'H5'` 컬럼**(요일별) = `그 요일 평일 예측 × 비중`. 비중 = `holidayRatio[계열]`(학습) 또는 `0.5`(폴백)
+### 평일 공휴일 DB량 (해당일 평일 예상의 50%)
+- 평일 공휴일 영업일의 DB량 = **그 요일 평일 예상 × 0.5** (단순 고정. 과거엔 토요일 수준·학습·비중 방식을 거쳤으나 최종적으로 50% 고정으로 정리)
+- `recInflowHoli(d)`/`recBatchHoli(d)` — 레코드가 평일 공휴일 소속인지 판정. `ensureAgg()` 및 플레인 DOW 테이블(`getDOWAverageByType`/`getMediaDOWTable*`/`get*DOWDateCounts`)에서 평일 공휴일 레코드를 **요일 평균에서 제외** (요일 평균이 공휴일에 오염되지 않도록)
+- 스마트 테이블의 **`'H1'`~`'H5'` 컬럼**(요일별) = `그 요일 평일 예측 × 0.5`
 - `effDow(i)`가 평일 공휴일에 `'H'+요일`(예: 수요일 공휴일 → `'H3'`)을 반환 → 4개 소비처(`getMediaDOWTotal`/`buildPredSection`/공유/엑셀)가 `tAM[m]['H3']` 등을 조회
-- 차주에 평일 공휴일이 있으면 분배일 토글 영역에 계열별 적용 비중 안내 노트 표시
+- 차주에 평일 공휴일이 있으면 분배일 토글 영역에 50% 적용 안내 노트 표시
 
 ## Language
 
