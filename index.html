@@ -1556,22 +1556,19 @@ function invalidateAgg(){aggDirty=true;}
 function ensureAgg(){
     if(!aggDirty&&aggCache)return;
     var byDt={},byDtMedia={},byDtMediaPeriod={};
-    // 평일 공휴일 학습 버킷 — 요일(주별)이 아니라 공휴일 날짜 단위로 집계한다
-    var byDtHoliday={},byDtMediaHoliday={},byDtMediaHolidayPeriod={},holiAllDates={};
+    // 평일 공휴일 버킷 — 공휴일 날짜 단위 집계 (요일 평균 오염 방지 + 비중 학습용)
+    var byDtHoliday={},holiAllDates={};
     var weekStartCache={};
     function ws(ds){if(weekStartCache[ds])return weekStartCache[ds];var w=getWeekStart(ds);weekStartCache[ds]=w;return w;}
     allData.forEach(function(d){
         if(d.isTimeboard||d.isSpecial)return;
         var dt=d.dbType,m=d.media;
         var dow=d.dayOfWeek;
-        // --- 요일/매체 (유입일 기준) — 평일 공휴일은 요일 평균에서 분리 ---
+        // --- 요일/매체 (유입일 기준) — 평일 공휴일은 요일 평균에서 분리, 공휴일 버킷에 집계 ---
         if(recInflowHoli(d)){
             holiAllDates[d.dateStr]=true;
             if(!byDtHoliday[dt])byDtHoliday[dt]={};
             byDtHoliday[dt][d.dateStr]=(byDtHoliday[dt][d.dateStr]||0)+1;
-            if(!byDtMediaHoliday[dt])byDtMediaHoliday[dt]={};
-            if(!byDtMediaHoliday[dt][m])byDtMediaHoliday[dt][m]={};
-            byDtMediaHoliday[dt][m][d.dateStr]=(byDtMediaHoliday[dt][m][d.dateStr]||0)+1;
         }else{
             var ows=ws(d.dateStr);
             if(!byDt[dt])byDt[dt]={};
@@ -1582,15 +1579,9 @@ function ensureAgg(){
             if(!byDtMedia[dt][m][dow])byDtMedia[dt][m][dow]={};
             byDtMedia[dt][m][dow][ows]=(byDtMedia[dt][m][dow][ows]||0)+1;
         }
-        // --- 기간(오전/오후)별 (배치일 기준) — 평일 공휴일은 분리 ---
-        var bdow=d.batchDayOfWeek,p=d.batchPeriod;
-        if(recBatchHoli(d)){
-            if(!byDtMediaHolidayPeriod[dt])byDtMediaHolidayPeriod[dt]={};
-            if(!byDtMediaHolidayPeriod[dt][m])byDtMediaHolidayPeriod[dt][m]={};
-            if(!byDtMediaHolidayPeriod[dt][m][p])byDtMediaHolidayPeriod[dt][m][p]={};
-            byDtMediaHolidayPeriod[dt][m][p][d.batchDate]=(byDtMediaHolidayPeriod[dt][m][p][d.batchDate]||0)+1;
-        }else{
-            var bws=ws(d.batchDate);
+        // --- 기간(오전/오후)별 (배치일 기준) — 평일 공휴일은 제외 ---
+        if(!recBatchHoli(d)){
+            var bws=ws(d.batchDate),bdow=d.batchDayOfWeek,p=d.batchPeriod;
             if(!byDtMediaPeriod[dt])byDtMediaPeriod[dt]={};
             if(!byDtMediaPeriod[dt][m])byDtMediaPeriod[dt][m]={};
             if(!byDtMediaPeriod[dt][m][p])byDtMediaPeriod[dt][m][p]={};
@@ -1598,20 +1589,42 @@ function ensureAgg(){
             byDtMediaPeriod[dt][m][p][bdow][bws]=(byDtMediaPeriod[dt][m][p][bdow][bws]||0)+1;
         }
     });
-    // 계열별 학습 표본 수 (distinct 평일 공휴일 일수)
-    var holiCount={};
-    Object.keys(byDtHoliday).forEach(function(dt){holiCount[dt]=Object.keys(byDtHoliday[dt]).length;});
+    // 계열별 공휴일 비중 학습: 각 과거 평일 공휴일의 (그날 DB ÷ 전후 같은 요일 평일 평균) = 비중.
+    // 표본이 HOLIDAY_LEARN_MIN 이상이면 이상치 제외 평균을 holidayRatio로 저장, 아니면 미저장(→ 0.5 폴백).
+    var holiCount={},holidayRatio={};
+    Object.keys(byDtHoliday).forEach(function(dt){
+        var dates=Object.keys(byDtHoliday[dt]);
+        holiCount[dt]=dates.length;
+        var ratios=[];
+        dates.forEach(function(D){
+            var dow=new Date(D+'T00:00:00').getDay();
+            var dowSeries=byDt[dt]&&byDt[dt][dow];
+            if(!dowSeries)return;
+            var weeks=Object.keys(dowSeries);
+            if(!weeks.length)return;
+            var Wt=new Date(ws(D)+'T00:00:00').getTime();
+            weeks.sort(function(a,b){return Math.abs(new Date(a+'T00:00:00')-Wt)-Math.abs(new Date(b+'T00:00:00')-Wt);});
+            var near=weeks.slice(0,4);
+            var baseline=near.reduce(function(s,w){return s+dowSeries[w];},0)/near.length;
+            if(baseline>0)ratios.push(byDtHoliday[dt][D]/baseline);
+        });
+        if(ratios.length>=HOLIDAY_LEARN_MIN){
+            var clean=removeOutliers(ratios);
+            if(!clean.length)clean=ratios;
+            holidayRatio[dt]=clean.reduce(function(a,b){return a+b;},0)/clean.length;
+        }
+    });
     aggCache={byDt:byDt,byDtMedia:byDtMedia,byDtMediaPeriod:byDtMediaPeriod,
-        byDtHoliday:byDtHoliday,byDtMediaHoliday:byDtMediaHoliday,byDtMediaHolidayPeriod:byDtMediaHolidayPeriod,
-        holiCount:holiCount,holiTotalDays:Object.keys(holiAllDates).length};
+        byDtHoliday:byDtHoliday,holiCount:holiCount,holidayRatio:holidayRatio,
+        holiTotalDays:Object.keys(holiAllDates).length};
     aggDirty=false;
 }
 function _aggSeries(b){if(!b)return [];return Object.keys(b).sort().map(function(w){return b[w];});}
 function getSmartDOWAverageByType(){ensureAgg();var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){var b=aggCache.byDt[dt]&&aggCache.byDt[dt][d];r[dt][d]=smartPredict(_aggSeries(b));});});return r;}
-// 'H1'~'H5' = 평일 공휴일 컬럼(요일별). 계열 표본이 HOLIDAY_LEARN_MIN 이상이고 해당 매체
-// 공휴일 데이터가 있으면 학습값, 아니면 그 요일 평일 평균의 50%로 폴백 (하이브리드).
-function getSmartMediaDOWTable(f){ensureAgg();var plain=getMediaDOWTable(f);var learn=(aggCache.holiCount[f]||0)>=HOLIDAY_LEARN_MIN;var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMedia[f]&&aggCache.byDtMedia[f][m]&&aggCache.byDtMedia[f][m][d];r[m][d]=smartPredict(_aggSeries(b));});var hser=_aggSeries(aggCache.byDtMediaHoliday[f]&&aggCache.byDtMediaHoliday[f][m]);var learned=(learn&&hser.length)?smartPredict(hser):null;[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=(learned!==null)?learned:r[m][d]*0.5;});});return r;}
-function getSmartMediaDOWTableByPeriod(f,p){ensureAgg();var plain=getMediaDOWTableByPeriod(f,p);var learn=(aggCache.holiCount[f]||0)>=HOLIDAY_LEARN_MIN;var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMediaPeriod[f]&&aggCache.byDtMediaPeriod[f][m]&&aggCache.byDtMediaPeriod[f][m][p]&&aggCache.byDtMediaPeriod[f][m][p][d];r[m][d]=smartPredict(_aggSeries(b));});var hb=aggCache.byDtMediaHolidayPeriod[f]&&aggCache.byDtMediaHolidayPeriod[f][m]&&aggCache.byDtMediaHolidayPeriod[f][m][p];var hser=_aggSeries(hb);var learned=(learn&&hser.length)?smartPredict(hser):null;[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=(learned!==null)?learned:r[m][d]*0.5;});});return r;}
+// 'H1'~'H5' = 평일 공휴일 컬럼(요일별) = 그 요일 평일 예측 × 공휴일 비중.
+// 비중 = 학습된 holidayRatio[계열](표본 충분 시) 또는 0.5(폴백).
+function getSmartMediaDOWTable(f){ensureAgg();var plain=getMediaDOWTable(f);var ratio=aggCache.holidayRatio[f]>0?aggCache.holidayRatio[f]:0.5;var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMedia[f]&&aggCache.byDtMedia[f][m]&&aggCache.byDtMedia[f][m][d];r[m][d]=smartPredict(_aggSeries(b));});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=r[m][d]*ratio;});});return r;}
+function getSmartMediaDOWTableByPeriod(f,p){ensureAgg();var plain=getMediaDOWTableByPeriod(f,p);var ratio=aggCache.holidayRatio[f]>0?aggCache.holidayRatio[f]:0.5;var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMediaPeriod[f]&&aggCache.byDtMediaPeriod[f][m]&&aggCache.byDtMediaPeriod[f][m][p]&&aggCache.byDtMediaPeriod[f][m][p][d];r[m][d]=smartPredict(_aggSeries(b));});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=r[m][d]*ratio;});});return r;}
 function getSmartMediaDOWTableForGroup(dts){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTable(dt);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]+=t[m]['H'+d];});});});return r;}
 function getSmartMediaDOWTableByPeriodForGroup(dts,p){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTableByPeriod(dt,p);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]+=t[m]['H'+d];});});});return r;}
 // dts가 단일 문자열/길이 1 배열이면 단일 dbType 함수, 아니면 그룹 합산 함수로 자동 분기
@@ -2440,13 +2453,14 @@ function updatePrediction(){
         var mark='';
         if(wkHoli)mark='<br><b style="color:#c62828;font-size:0.62rem;font-weight:700;">공휴일·'+(on?'영업':'휴무')+'</b>';
         else if(holi)mark='<br><b style="color:#c62828;font-size:0.62rem;font-weight:700;">공휴일</b>';
-        var tip=wkHoli?(on?'평일 공휴일 — 영업(DB량은 과거 공휴일 학습값 또는 평일의 50%). 토글로 휴무 전환 가능':'평일 공휴일 — 휴무(주말처럼 비분배·이월). 토글로 영업 전환 가능'):'';
+        var tip=wkHoli?(on?'평일 공휴일 — 영업(DB량 = 평일 예측 × 공휴일 비중). 토글로 휴무 전환 가능':'평일 공휴일 — 휴무(주말처럼 비분배·이월). 토글로 영업 전환 가능'):'';
         tgl+='<div class="wd-day'+(on?'':' wd-off')+'" title="'+tip+'"><span>'+l+mark+'</span><label class="toggle-switch"><input type="checkbox"'+(on?' checked':'')+' onchange="toggleWorkingDay('+i+')"><span class="toggle-slider"></span></label></div>';
     });
     if(holiCnt){
         ensureAgg();
         var hd=aggCache.holiTotalDays||0;
-        tgl+='<div style="flex-basis:100%;font-size:0.75rem;color:#6a1b9a;background:#f3e5f5;border:1px solid #e1bee7;border-radius:6px;padding:6px 10px;margin-top:6px;">📚 차주 평일 공휴일 '+holiCnt+'일 — 공휴일 DB량 = 과거 평일 공휴일 학습값(현재 표본 '+hd+'일). 계열 표본 '+HOLIDAY_LEARN_MIN+'일 미만이면 그 요일 평일 평균의 50%로 대체.</div>';
+        var rp=DB_TYPES.map(function(dt){var lr=aggCache.holidayRatio[dt];return dt+' '+Math.round((lr>0?lr:0.5)*100)+'%'+(lr>0?'(학습)':'');}).join(' · ');
+        tgl+='<div style="flex-basis:100%;font-size:0.75rem;color:#6a1b9a;background:#f3e5f5;border:1px solid #e1bee7;border-radius:6px;padding:6px 10px;margin-top:6px;">📚 차주 평일 공휴일 '+holiCnt+'일 — 공휴일 DB = 평일 예측 × 비중. 학습 표본 '+hd+'일(계열별 '+HOLIDAY_LEARN_MIN+'일 이상이면 학습 비중, 아니면 기본 50%).<br>적용 비중: '+rp+'</div>';
     }
     document.getElementById('workingDayToggles').innerHTML=tgl;
     var c=document.getElementById('predictionTables'),h='';
