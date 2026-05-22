@@ -63,8 +63,9 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 
 ### 주요 상수
 - `WEEK_ORDER=[6,0,1,2,3,4,5]` — 토요일 시작 (분배 주기)
-- `workingDayToggle=[true,false,true,true,true,true,true]` — 일요일 비분배
+- `workingDayToggle=[true,false,true,true,true,true,true]` — 일요일 비분배 (요일 단위 수동 토글)
 - `KR_HOLIDAYS` — 2026년 한국 공휴일 (매년 업데이트 필요)
+- `isWorkDay(i)` — 차주 i번째 날(WEEK_ORDER 기준)의 실제 분배 여부 = `workingDayToggle[i] && 공휴일 아님`. 평일 공휴일은 주말처럼 자동 비분배일로 처리되며(차주 예상·캐리오버·수동조정·공유·엑셀 공통), 분배일 토글 UI에서 OFF·비활성 + `공휴일` 표시. 차주 예상 관련 계산은 `workingDayToggle[i]` 직접 참조 대신 `isWorkDay(i)`를 사용할 것. 단 타임보드/스페셜 스케줄은 공휴일에도 집행 가능(영향 없음)
 
 ## Language
 
