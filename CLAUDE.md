@@ -71,15 +71,15 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 - `holidayClosed` — 날짜 단위 휴무 override (`{'YYYY-MM-DD':true}`). IndexedDB `holidayClosed`에 영구 저장
 - **평일(월~금) 공휴일은 기본 영업(ON)**, `holidayClosed`에 등록된 날만 휴무. 토/일 공휴일은 기존 `workingDayToggle` 따름. 분배일 토글 UI는 평일 공휴일에 한해 날짜 단위(`holidayClosed`)를 토글
 - **휴무 평일 공휴일** → 주말처럼 비분배·이월(캐리오버)
-- 헬퍼: `isPredHoliday(i)`, `isWeekdayHoliday(i)`(월~금 공휴일), `isWorkDay(i)`(실제 분배 여부), `effDow(i)`(평균 조회용 실효 요일 키 — 평일 공휴일은 문자열 `'H'` 반환)
+- 헬퍼: `isPredHoliday(i)`, `isWeekdayHoliday(i)`(월~금 공휴일), `isWorkDay(i)`(실제 분배 여부), `effDow(i)`(평균 조회용 실효 요일 키 — 평일 공휴일은 `'H'+요일`(예: `'H3'`) 반환)
 - 차주 예상 계산은 `workingDayToggle[i]` 직접 참조 대신 `isWorkDay(i)`, DOW 평균 조회는 `effDow(i)`를 사용할 것 (차주 예상·캐리오버·수동조정·공유·엑셀 공통)
 - 타임보드/스페셜 스케줄은 공휴일에도 집행 가능(영향 없음)
 
 ### 평일 공휴일 DB량 학습 (하이브리드)
 - `ensureAgg()`가 평일 공휴일 레코드를 요일 버킷에서 **분리**해 별도 학습 버킷에 집계: `byDtHoliday`/`byDtMediaHoliday`(유입일 기준)·`byDtMediaHolidayPeriod`(배치일 기준). 키는 주 단위가 아닌 **공휴일 날짜 단위** (연휴 합산 방지). 따라서 평일 요일 평균은 공휴일에 오염되지 않음
 - `recInflowHoli(d)`/`recBatchHoli(d)` — 레코드가 평일 공휴일 소속인지 판정. 플레인 DOW 테이블(`getDOWAverageByType`/`getMediaDOWTable*`/`get*DOWDateCounts`)도 동일 제외 적용
-- 스마트 테이블(`getSmartMediaDOWTable`/`...ByPeriod` 및 그룹판)에 **`'H'` 컬럼** 추가: 계열 표본 ≥ `HOLIDAY_LEARN_MIN` & 매체별 공휴일 데이터 존재 시 학습값(`smartPredict`), 아니면 **토요일(6) 수준으로 폴백** (하이브리드)
-- `effDow(i)`가 평일 공휴일에 `'H'`를 반환 → 4개 소비처(`getMediaDOWTotal`/`buildPredSection`/공유/엑셀)가 `tAM[m]['H']` 등을 조회
+- 스마트 테이블(`getSmartMediaDOWTable`/`...ByPeriod` 및 그룹판)에 **`'H1'`~`'H5'` 컬럼**(요일별) 추가: 계열 표본 ≥ `HOLIDAY_LEARN_MIN` & 매체별 공휴일 데이터 존재 시 학습값(`smartPredict`), 아니면 **그 요일 평일 평균의 50%로 폴백** (하이브리드)
+- `effDow(i)`가 평일 공휴일에 `'H'+요일`(예: 수요일 공휴일 → `'H3'`)을 반환 → 4개 소비처(`getMediaDOWTotal`/`buildPredSection`/공유/엑셀)가 `tAM[m]['H3']` 등을 조회
 - 차주에 평일 공휴일이 있으면 분배일 토글 영역에 학습 표본 안내 노트 표시
 
 ## Language
