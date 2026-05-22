@@ -65,7 +65,15 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 - `WEEK_ORDER=[6,0,1,2,3,4,5]` — 토요일 시작 (분배 주기)
 - `workingDayToggle=[true,false,true,true,true,true,true]` — 일요일 비분배 (요일 단위 수동 토글)
 - `KR_HOLIDAYS` — 2026년 한국 공휴일 (매년 업데이트 필요)
-- `isWorkDay(i)` — 차주 i번째 날(WEEK_ORDER 기준)의 실제 분배 여부 = `workingDayToggle[i] && 공휴일 아님`. 평일 공휴일은 주말처럼 자동 비분배일로 처리되며(차주 예상·캐리오버·수동조정·공유·엑셀 공통), 분배일 토글 UI에서 OFF·비활성 + `공휴일` 표시. 차주 예상 관련 계산은 `workingDayToggle[i]` 직접 참조 대신 `isWorkDay(i)`를 사용할 것. 단 타임보드/스페셜 스케줄은 공휴일에도 집행 가능(영향 없음)
+
+### 평일 공휴일 처리 (차주 예상)
+- `holidayClosed` — 날짜 단위 휴무 override (`{'YYYY-MM-DD':true}`). IndexedDB `holidayClosed`에 영구 저장
+- **평일(월~금) 공휴일은 기본 영업(ON)**, `holidayClosed`에 등록된 날만 휴무. 토/일 공휴일은 기존 `workingDayToggle` 따름
+- **영업하는 평일 공휴일** → DB량을 **토요일(DOW 6) 수준**으로 산정. 분배일 토글 UI는 날짜 단위(`holidayClosed`)를 토글 (요일 단위 `workingDayToggle` 아님)
+- **휴무 평일 공휴일** → 주말처럼 비분배·이월(캐리오버)
+- 헬퍼: `isPredHoliday(i)`, `isWeekdayHoliday(i)`(월~금 공휴일), `isWorkDay(i)`(실제 분배 여부), `isHolidayOpen(i)`(영업 공휴일), `effDow(i)`(평균 조회용 실효 요일 — 영업 공휴일은 6 반환)
+- 차주 예상 계산은 `workingDayToggle[i]` 직접 참조 대신 `isWorkDay(i)`, DOW 평균 조회는 `effDow(i)`를 사용할 것 (차주 예상·캐리오버·수동조정·공유·엑셀 공통)
+- 타임보드/스페셜 스케줄은 공휴일에도 집행 가능(영향 없음)
 
 ## Language
 
