@@ -2526,7 +2526,25 @@ function renderTierConfigUI(){
     document.getElementById('secWeightUpper').value=tierConfig.secWeightUpper;
     document.getElementById('secWeightLower').value=tierConfig.secWeightLower;
     var gc=document.getElementById('groupConfigDisplay');
-    gc.innerHTML=Object.keys(tierConfig.groups).map(function(g){var cfg=tierConfig.groups[g];return'<div class="group-card"><h4>'+g+'등급</h4>'+TIERS.map(function(tName,t){var idx=(cfg.tiers||[]).indexOf(t);var val=idx>=0?(cfg.basis[idx]||0):0;return'<div class="tier-row"><span>'+tName+'</span><input type="number" id="gb_'+g+'_'+t+'" value="'+val+'" min="0" style="width:45px;padding:2px;border:1px solid #ddd;border-radius:3px;text-align:center;" onchange="saveTierConfig()"></div>';}).join('')+'</div>';}).join('');
+    gc.innerHTML=Object.keys(tierConfig.groups).map(function(g){var cfg=tierConfig.groups[g];if(g==='D'){return'<div class="group-card"><h4>D등급</h4><div style="font-size:0.78rem;color:#666;line-height:1.5;padding:6px 2px;">계열 기준 설정 불필요<br><strong style="color:#1a237e;">계열별 C등급의 70%</strong><br>자동 적용</div></div>';}return'<div class="group-card"><h4>'+g+'등급</h4>'+TIERS.map(function(tName,t){var idx=(cfg.tiers||[]).indexOf(t);var val=idx>=0?(cfg.basis[idx]||0):0;return'<div class="tier-row"><span>'+tName+'</span><input type="number" id="gb_'+g+'_'+t+'" value="'+val+'" min="0" style="width:45px;padding:2px;border:1px solid #ddd;border-radius:3px;text-align:center;" onchange="saveTierConfig()"></div>';}).join('')+'</div>';}).join('');
+}
+
+// 등급별/계열별 1인 분배 컨텍스트 (영어)
+// 계열별 예상 DB(target)을 그 계열을 담당하는 등급들에게 (인원 × 등급가중치 × basis) 비례로 분배
+// pp[g][ti][di] = target_ti_di × weight_g × basis_g_ti / Σ_g(staff_g_di × weight_g × basis_g_ti)
+// → Σ_g(staff_g_di × pp_g_ti_di) = target_ti_di 가 정확히 성립 (반올림 제외)
+// basis=0 인 등급은 분모/분자에서 자연 제외
+function buildTierDistContext(wd){
+    var groups=Object.keys(tierConfig.groups);
+    var staff={};
+    groups.forEach(function(g){staff[g]=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;});});
+    // D등급은 자체 계열 기준을 설정하지 않고 C등급 계열 기준을 그대로 사용한다.
+    // → 분배식에서 D는 C와 같은 계열에 참여하고, GROUP_WEIGHT.D(0.7)가 곱해져
+    //   계열별 D 1인 분배 = C 1인 분배 × 0.7 로 자동 적용된다(총합은 target 보존).
+    function basisFor(g,ti){var key=(g==='D')?'C':g;var cfg=tierConfig.groups[key];if(!cfg)return 0;var bidx=cfg.tiers.indexOf(ti);return(bidx>=0)?(cfg.basis[bidx]||0):0;}
+    function denom(ti,di){var d=0;groups.forEach(function(g){d+=staff[g][di]*(GROUP_WEIGHT[g]||1)*basisFor(g,ti);});return d;}
+    function pp(g,ti,di,target){var d=denom(ti,di);var b=basisFor(g,ti);if(d<=0||staff[g][di]<=0||b<=0||target<=0)return 0;return Math.round(target*(GROUP_WEIGHT[g]||1)*b/d);}
+    return{staff:staff,pp:pp,basisFor:basisFor,denom:denom};
 }
 
 function updateTierPrediction(){
@@ -2580,15 +2598,11 @@ function updateTierPrediction(){
     document.getElementById('tierPredTables').innerHTML=tierPredHtml;
     document.getElementById('tierPredSection').style.display='block';
 
-    // --- 그룹별/계열별 1인 분배 (균등 분배 후 계열 비율 적용) ---
+    // --- 그룹별/계열별 1인 분배 (계열별 예상 DB 기준 비례 배분) ---
     if(!attendanceData.length){document.getElementById('groupDistSection').style.display='none';return;}
     document.getElementById('groupDistSection').style.display='block';
     var gdHtml='';
-    // 각 그룹의 basis 합계 (1인당 총 기준)
-    var groupBasisSum={};
-    Object.keys(tierConfig.groups).forEach(function(g){
-        groupBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;
-    });
+    var distCtx=buildTierDistContext(wd);
     Object.keys(tierConfig.groups).forEach(function(g){
         var cfg=tierConfig.groups[g];
         var staffPerDay=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g);});
@@ -2598,22 +2612,9 @@ function updateTierPrediction(){
         gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
         var grpTotalPerDay=WEEK_ORDER.map(function(){return 0;});
         cfg.tiers.forEach(function(ti,bi){
-            var basisRatio=cfg.basis[bi]/groupBasisSum[g]; // 이 그룹 내 계열 비율
             var perPerson=WEEK_ORDER.map(function(_,di){
-                // 가중치 적용 영어 근무인원 합 (D=0.7 등)
-                var weightedTotal=0;
-                Object.keys(tierConfig.groups).forEach(function(g2){
-                    var s2=wd[di]?(getWorkingStaffByGroupForDate(wd[di],g2)||0):0;
-                    weightedTotal+=s2*(GROUP_WEIGHT[g2]||1);
-                });
-                if(!weightedTotal)return 0;
-                var myStaff=staffPerDay[di]||0;
-                if(!myStaff)return 0;
-                // 전체 DB를 가중 인원으로 분배 → 가중치 1단위당 DB. 등급별 가중치를 곱해 1인당 산출
-                var dayTotal=engEffective[di]||0;
-                var perPersonTotal=Math.round((dayTotal/weightedTotal)*(GROUP_WEIGHT[g]||1));
-                // 그룹 내 계열 비율 적용
-                var pp=Math.round(perPersonTotal*basisRatio);
+                var target=(tierDailyEng[ti]||[])[di]||0;
+                var pp=distCtx.pp(g,ti,di,target);
                 grpTotalPerDay[di]+=pp;
                 return pp;
             });
@@ -2849,15 +2850,15 @@ function updateShareTab(){
         var gh='<div class="share-section" id="'+prefix+'sec-group">';
         gh+='<h3>등급별 1인 예상 분배 DB수</h3>';
         var wd=getNextWeekDates();
-        var shareBasisSum={};Object.keys(tierConfig.groups).forEach(function(g){shareBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;});
+        var shareDistCtx=buildTierDistContext(wd);
+        var shareTierDaily=lastPredData.tierDailyEng||[];
         Object.keys(tierConfig.groups).forEach(function(g,gi){
             var cfg=tierConfig.groups[g],staffPD=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;}),grpTotal=WEEK_ORDER.map(function(){return 0;}),isFirst=true;
             gh+='<table class="share-table"'+(gi>0?' style="margin-top:12px;"':'')+'><thead><tr><th>등급</th><th>계열</th>';
             pdl.forEach(function(l,i){gh+='<th>'+l.replace(/\)$/,', '+staffPD[i]+'명)')+'</th>';});
             gh+='<th>합계</th></tr></thead><tbody>';
             cfg.tiers.forEach(function(ti,bi){
-                var basisRatio=cfg.basis[bi]/shareBasisSum[g];
-                var ppVals=WEEK_ORDER.map(function(_,di){var weightedTotal=0;Object.keys(tierConfig.groups).forEach(function(g2){var s2=getWorkingStaffByGroupForDate(wd[di],g2)||0;weightedTotal+=s2*(GROUP_WEIGHT[g2]||1);});if(!weightedTotal||!staffPD[di])return 0;var dayTotal=lastPredData.engEffective?lastPredData.engEffective[di]:0;var perPersonTotal=Math.round((dayTotal/weightedTotal)*(GROUP_WEIGHT[g]||1));var pp=Math.round(perPersonTotal*basisRatio);grpTotal[di]+=pp;return pp;});
+                var ppVals=WEEK_ORDER.map(function(_,di){var target=(shareTierDaily[ti]||[])[di]||0;var pp=shareDistCtx.pp(g,ti,di,target);grpTotal[di]+=pp;return pp;});
                 gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'등급</strong>':'')+'</td><td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';isFirst=false;
             });
             gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td>'+grpTotal.map(function(v){return'<td style="color:#1a237e;">'+fn(v)+'</td>';}).join('')+'<td style="color:#1a237e;"><strong>'+fn(grpTotal.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
@@ -3334,8 +3335,8 @@ function downloadPredExcel(){
     if(attendanceData.length&&lastPredData.tierDailyEng){
         var gi=[['등급별 / 계열별 1인 분배 예상 ('+wl+')']];
         var wd2=getNextWeekDates();
-        var xlBasisSum={};
-        Object.keys(tierConfig.groups).forEach(function(g){xlBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;});
+        var xlDistCtx=buildTierDistContext(wd2);
+        var xlTierDaily=lastPredData.tierDailyEng||[];
         // 등급별 영어
         Object.keys(tierConfig.groups).forEach(function(g){
             var cfg=tierConfig.groups[g];
@@ -3345,13 +3346,9 @@ function downloadPredExcel(){
             gi.push(hdrWithStaff);
             var grpTotal=WEEK_ORDER.map(function(){return 0;});
             cfg.tiers.forEach(function(tidx,bi){
-                var basisRatio=cfg.basis[bi]/xlBasisSum[g];
                 var ppVals=WEEK_ORDER.map(function(_,di){
-                    var weightedTotal=0;Object.keys(tierConfig.groups).forEach(function(g2){var s2=getWorkingStaffByGroupForDate(wd2[di],g2)||0;weightedTotal+=s2*(GROUP_WEIGHT[g2]||1);});
-                    if(!weightedTotal||!staffPD[di])return 0;
-                    var dayTotal=lastPredData.engEffective?lastPredData.engEffective[di]:0;
-                    var perPersonTotal=Math.round((dayTotal/weightedTotal)*(GROUP_WEIGHT[g]||1));
-                    var pp=Math.round(perPersonTotal*basisRatio);
+                    var target=(xlTierDaily[tidx]||[])[di]||0;
+                    var pp=xlDistCtx.pp(g,tidx,di,target);
                     grpTotal[di]+=pp;return pp;
                 });
                 gi.push([TIERS[tidx]].concat(ppVals).concat([ppVals.reduce(function(a,b){return a+b;},0)]));
