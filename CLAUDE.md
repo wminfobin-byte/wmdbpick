@@ -69,7 +69,7 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 ### 평일 공휴일 처리 (차주 예상)
 - `holidayClosed` — 날짜 단위 휴무 override (`{'YYYY-MM-DD':true}`). IndexedDB `holidayClosed`에 영구 저장
 - **평일(월~금) 공휴일은 기본 영업(ON)**, `holidayClosed`에 등록된 날만 휴무. 토/일 공휴일은 기존 `workingDayToggle` 따름. 분배일 토글 UI는 평일 공휴일에 한해 날짜 단위(`holidayClosed`)를 토글
-- **휴무 평일 공휴일** → 주말처럼 비분배·이월(캐리오버)
+- **휴무 평일 공휴일** → 비분배·이월(캐리오버). 단, base가 이미 `'H'`(그 요일 평일 예상의 50%)이므로 `applyCarryover`의 연속 OFF 50% 추가 감소는 **적용하지 않음**(`isWeekdayHoliday` 제외) → 휴무 공휴일은 단독·연속 무관하게 그 요일 50%를 이월. (주말 OFF만 연속 시 50% 추가 감소)
 - 헬퍼: `isPredHoliday(i)`, `isWeekdayHoliday(i)`(월~금 공휴일), `isWorkDay(i)`(실제 분배 여부), `effDow(i)`(평균 조회용 실효 요일 키 — 평일 공휴일은 `'H'+요일`(예: `'H3'`) 반환)
 - 차주 예상 계산은 `workingDayToggle[i]` 직접 참조 대신 `isWorkDay(i)`, DOW 평균 조회는 `effDow(i)`를 사용할 것 (차주 예상·캐리오버·수동조정·공유·엑셀 공통)
 - 타임보드/스페셜 스케줄은 공휴일에도 집행 가능(영향 없음)

@@ -1410,6 +1410,15 @@ function isWorkDay(i){
 function effDow(i){
     return isWeekdayHoliday(i)?('H'+WEEK_ORDER[i]):WEEK_ORDER[i];
 }
+// OFF일(비분배) 매체별/DB예상(공유)/엑셀 표시 계수: 연속 OFF(주말 등)면 그 날 50%로 표시(광고 축소).
+// 평일 공휴일은 base가 이미 'H'(그 요일 평일 예상의 50%)이므로 1.0(중복 감소 방지).
+function offDispFactor(i){
+    if(!isWorkDay(i)&&!isWeekdayHoliday(i)){
+        var consecutive=(i>0&&!isWorkDay(i-1))||(i<6&&!isWorkDay(i+1));
+        if(consecutive)return 0.5;
+    }
+    return 1;
+}
 
 // 미디어코드에서 패키지 추출 (naver_tb_tw_1AM → tw, naver_sp_lggo_5PM → lggo)
 function extractPackage(mc){
@@ -2281,7 +2290,7 @@ function buildPredSection(title,dts,adjustCat){
     var h='<div class="section"><h3>'+title+' - 차주 매체별 예상'+adjNote+'</h3>';
     var bh='',am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
     // 셀별로 round5 후 합산 → 합계가 표시된 셀들의 정확한 합 (오전 합계 5인데 매체별 0 같은 불일치 방지)
-    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i],ed=effDow(i);var raw=!isWorkDay(i)?tAll[m][ed]*r:tAM[m][ed]*r;var v=round5(raw);am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';});
+    MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i],ed=effDow(i);var raw=!isWorkDay(i)?tAll[m][ed]*r*offDispFactor(i):tAM[m][ed]*r;var v=round5(raw);am[i]+=v;return v;});var rt=vs.reduce(function(a,b){return a+b;},0);bh+='<tr><td>'+m+'</td>'+vs.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';});
     bh+='<tr class="highlight-row" style="background:#e3f2fd !important;"><td><strong>오전 합계</strong></td>'+am.map(function(v){return'<td class="num"><strong>'+fn(v)+'</strong></td>';}).join('')+'<td class="num"><strong>'+fn(am.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
     MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(isWorkDay(i))pm[i]+=round5(tPM[m][effDow(i)]*ratios[i]);});});
     bh+='<tr style="background:#fff8e1;"><td><strong>오후 추가</strong></td>'+pm.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(pm.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
@@ -2662,14 +2671,15 @@ function applyCarryover(dailyVals){
     var carry=0;
     for(var i=0;i<7;i++){
         if(!isWorkDay(i)){
-            // 연속 OFF일 여부 확인 (앞뒤 중 하나라도 OFF면 연속)
-            var consecutive=(i>0&&!isWorkDay(i-1))||(i<6&&!isWorkDay(i+1));
+            // 평일 공휴일(휴무)은 base가 이미 'H' 컬럼(그 요일 평일 예상의 50%)이므로
+            // 추가 감소 없이 전액 이월(단독·연속 무관). 그 외(주말 등) OFF는 연속이면 광고 축소로 50% 감소.
+            var consecutive=!isWeekdayHoliday(i)&&((i>0&&!isWorkDay(i-1))||(i<6&&!isWorkDay(i+1)));
             if(consecutive){
                 // 연속 OFF: 광고 축소로 유입 50% 감소
                 result[i]=round5(result[i]*0.5);
                 carry+=result[i];
             }else{
-                // 단독 OFF: 100% 이월
+                // 단독 OFF(또는 휴무 공휴일): base 그대로 100% 이월
                 carry+=result[i];
             }
             result[i]=0;
@@ -2802,12 +2812,13 @@ function updateShareTab(){
             mh+='<table class="share-table"><thead><tr><th>매체</th>';pdl.forEach(function(l){mh+='<th>'+l+'</th>';});mh+='<th>합계</th></tr></thead><tbody>';
             var totals=WEEK_ORDER.map(function(){return 0;});
             MEDIA_TYPES.forEach(function(m){
-                var vs=WEEK_ORDER.map(function(d,i){
+                // 종합 예상 표와 동일하게 OFF일은 이월: 토·일 0, 50%는 다음 영업일로 캐리오버.
+                var raw=WEEK_ORDER.map(function(d,i){
                     var r=ratios[i],ed=effDow(i);
-                    var v=isWorkDay(i)?(round5(tAM[m][ed]*r)+round5(tPM[m][ed]*r)):round5(tAll[m][ed]*r);
-                    totals[i]+=v;
-                    return v;
+                    return isWorkDay(i)?(round5(tAM[m][ed]*r)+round5(tPM[m][ed]*r)):round5(tAll[m][ed]*r);
                 });
+                var vs=applyCarryover(raw);
+                vs.forEach(function(v,i){totals[i]+=v;});
                 var rt=vs.reduce(function(a,b){return a+b;},0);
                 if(rt>0)mh+=shareRow(m,vs);
             });
@@ -3247,7 +3258,7 @@ function downloadPredExcel(){
         var ratios=dts.length>1?getAdjustDayRatiosMulti(dts):getAdjustDayRatios(dts,item.a);
         pr.push([item.t+' - 차주 매체별 예상']);pr.push(hdr);
         var am=WEEK_ORDER.map(function(){return 0;}),pm=WEEK_ORDER.map(function(){return 0;});
-        MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i],ed=effDow(i);if(!isWorkDay(i)){var v=round5(tAll[m][ed]*r);am[i]+=v;return v;}var v=round5(tAM[m][ed]*r);am[i]+=v;return v;});pr.push([m].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
+        MEDIA_TYPES.forEach(function(m){var vs=WEEK_ORDER.map(function(d,i){var r=ratios[i],ed=effDow(i);if(!isWorkDay(i)){var v=round5(tAll[m][ed]*r*offDispFactor(i));am[i]+=v;return v;}var v=round5(tAM[m][ed]*r);am[i]+=v;return v;});pr.push([m].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
         pr.push(['오전 합계'].concat(am).concat([am.reduce(function(a,b){return a+b;},0)]));
         MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d,i){if(isWorkDay(i))pm[i]+=round5(tPM[m][effDow(i)]*ratios[i]);});});
         pr.push(['오후 추가'].concat(pm).concat([pm.reduce(function(a,b){return a+b;},0)]));
