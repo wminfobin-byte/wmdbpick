@@ -877,9 +877,10 @@ function renderDiffCell(v){var cls=v>=0?'diff-positive':'diff-negative';return'<
 
 // Attendance
 function classifyStaffDB(p){var d=(p.department||'').trim();if(d.includes('제2외국어'))return'제2외국어';if(d.includes('톡이즈'))return'톡이즈';if(d.includes('뇌새김')){var g=(p.group||'').trim();if(g.includes('톡이즈'))return'톡이즈';if(g.includes('제2')||g.includes('2외')||g.includes('일본')||g.includes('중국'))return'제2외국어';var sg=classifyStaffGroup(p);if(sg==='H')return null;if(sg)return'영어';}return null;}
-// 근태 파일 B열 그룹 → 등급 매핑 (CMS는 아직 구 명칭 사용중)
-// W그룹→A등급, E그룹→B등급, A그룹→C등급, B그룹→D등급, H그룹→H등급, N(레거시)→C등급
-function classifyStaffGroup(p){var g=(p.group||'').trim().toUpperCase();if(!g)return null;if(g.includes('H'))return'H';if(g.includes('W'))return'A';if(g.includes('E'))return'B';if(g.includes('N'))return'C';if(g.includes('A'))return'C';if(g.includes('B'))return'D';return null;}
+// 근태 파일 B열 그룹 → 등급 매핑 (CMS 명칭 정상화 완료: 그룹명=등급명)
+// A그룹→A등급, B그룹→B등급, C그룹→C등급, D그룹→D등급, H그룹→H등급, N(레거시)→C등급
+// (구 명칭 W=A·E=B·A=C·B=D 표기는 폐기. 구 근태파일을 다시 올리면 A/B가 오분류되므로 새 포맷 파일을 사용할 것)
+function classifyStaffGroup(p){var g=(p.group||'').trim().toUpperCase();if(!g)return null;if(g.includes('H'))return'H';if(g.includes('A'))return'A';if(g.includes('B'))return'B';if(g.includes('C'))return'C';if(g.includes('D'))return'D';if(g.includes('N'))return'C';return null;}
 function isWorkingStatus(v){if(v===null||v===undefined)return false;var s=String(v).trim();if(s===''||s==='-')return false;if(/^(연|휴|공|병|경|무|파견|교육|출장)/.test(s))return false;return true;}
 // 근태 월이 다르면 해당 인원 전원 출근으로 가정 (predicate에 매칭되는 인원만 카운트)
 function _countStaffOnDate(ds,predicate){
