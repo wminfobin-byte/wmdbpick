@@ -2177,13 +2177,14 @@ function buildPackageMediaSection(){
     h+='</div>';
     return h;
 }
-function downloadPackageMediaExcel(){
+// 패키지별 매체별 DB 유입 워크시트 빌더 (개별 다운로드 + 통합 다운로드 공용)
+function buildPackageMediaWS(){
     var bd=getPackageMediaBreakdown();
-    if(!bd){alert('데이터가 없습니다.');return;}
+    if(!bd)return null;
     var c=bd.counts,r=bd.range,colSum={},grandTotal=0;
     PKG_COLS.forEach(function(p){colSum[p]=0;});
     PKG_MEDIA_ROWS.forEach(function(m){PKG_COLS.forEach(function(p){colSum[p]+=c[m][p];grandTotal+=c[m][p];});});
-    if(!grandTotal){alert('집계할 데이터가 없습니다.');return;}
+    if(!grandTotal)return null;
     var aoa=[];
     aoa.push(['최근 한주간 패키지별 매체별 DB 유입 ('+r.startStr+' ~ '+r.endStr+')']);
     aoa.push([]);
@@ -2236,9 +2237,15 @@ function downloadPackageMediaExcel(){
         }
     }
     ws['!cols']=[{wch:14}].concat(PKG_COLS.map(function(){return{wch:12};})).concat([{wch:12}]);
+    return{ws:ws,range:r};
+}
+
+function downloadPackageMediaExcel(){
+    var pm=buildPackageMediaWS();
+    if(!pm){alert('집계할 데이터가 없습니다.');return;}
     var wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,'패키지별 매체별 DB 유입');
-    XLSX.writeFile(wb,'패키지별_매체별_DB유입_'+r.startStr+'_'+r.endStr+'.xlsx');
+    XLSX.utils.book_append_sheet(wb,pm.ws,'패키지별 매체별 DB 유입');
+    XLSX.writeFile(wb,'패키지별_매체별_DB유입_'+pm.range.startStr+'_'+pm.range.endStr+'.xlsx');
 }
 
 function buildPredRow(l,vs,hl){var rt=vs.reduce(function(a,b){return a+b;},0);return'<tr'+(hl?' class="highlight-row"':'')+'><td>'+l+'</td>'+vs.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(rt)+'</strong></td></tr>';}
@@ -3290,48 +3297,7 @@ function downloadPredExcel(){
     }
     XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(pr)),'차주 매체별 예상');
 
-    // Sheet 2: 차주 종합 예상 (carryover 반영된 데이터)
-    var dhdr=['구분'].concat(pdl).concat(['합계']);
-    var tr=[['차주 종합 예상 ('+wl+')'],dhdr];
-    if(lastPredData.regularData){var rd=lastPredData.regularData;
-        ANALYSIS_LANGS.forEach(function(c){tr.push([c].concat(rd[c]).concat([rd[c].reduce(function(a,b){return a+b;},0)]));});
-        SEC_LANG_TYPES.forEach(function(dt){tr.push(['  '+dt].concat(rd[dt]).concat([rd[dt].reduce(function(a,b){return a+b;},0)]));});
-        tr.push(['타임보드'].concat(lastPredData.tbByDay).concat([lastPredData.tbByDay.reduce(function(a,b){return a+b;},0)]));
-        tr.push(['스페셜'].concat(lastPredData.spByDay).concat([lastPredData.spByDay.reduce(function(a,b){return a+b;},0)]));
-        tr.push(['합계'].concat(lastPredData.totals).concat([lastPredData.grandTotal]));
-        // 1인 분배
-        if(attendanceData.length){
-            tr.push([]);tr.push(['1인 분배 예상 (근태 기반)']);
-            var wd=getNextWeekDates();
-            ANALYSIS_LANGS.forEach(function(cat){
-                var cr=rd[cat],cs=lastPredData.schedByCategory[cat];
-                var staffs=WEEK_ORDER.map(function(d,i){return getWorkingStaffForDate(wd[i],cat);});
-                var pp=WEEK_ORDER.map(function(d,i){var t=cr[i]+cs[i],s=staffs[i];return(s===null||s===0)?'-':Math.round(t/s);});
-                tr.push([cat+' 1인'].concat(pp).concat(['-']));
-                tr.push([cat+' 근무인원'].concat(staffs.map(function(s){return s!==null?s:'-';})).concat(['-']));
-            });
-        }
-    }
-    XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(tr)),'차주 종합 예상');
-
-    // Sheet 3: 타임보드/스페셜 집행 계획 (활성 스케줄만)
-    if(!activeScheds)activeScheds=getActiveSchedules();
-    if(activeScheds.length){
-        var sr=[['타임보드/스페셜 집행 계획'],['유형','날짜','시간','비중','예상 DB수','광고비(만원)','주말/평일','분배일']];
-        activeScheds.forEach(function(s){
-            var typeName=s.type==='timeboard'?'타임보드':'스페셜';
-            var pp=[];DB_TYPES.forEach(function(dt){if(s.pcts&&s.pcts[dt]>0)pp.push(dt+' '+s.pcts[dt]+'%');});
-            var sd=s.schedDate?new Date(s.schedDate+'T00:00:00'):null;
-            var dateLabel=sd?((sd.getMonth()+1)+'/'+sd.getDate()+'('+DAY_NAMES[sd.getDay()]+')'):'';
-            var distDate=getScheduleDistDate(s);
-            var distLabel='';
-            if(distDate){var dd=new Date(distDate+'T00:00:00');distLabel=(dd.getMonth()+1)+'/'+dd.getDate()+'('+DAY_NAMES[dd.getDay()]+')';if(distDate!==s.schedDate)distLabel+=' (이월)';}
-            sr.push([typeName,dateLabel,formatHour(s.hour),pp.join(' / '),s.totalPredicted,s.adCost||0,s.dayType||'',distLabel]);
-        });
-        XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(sr)),'집행 계획');
-    }
-
-    // Sheet 4: 계열별 예상 유입
+    // Sheet 2: 계열별 예상 유입
     if(lastPredData.tierDailyEng){
         var ti=[['계열별 예상 유입 수량 ('+wl+')'],['계열','비중'].concat(pdl).concat(['합계'])];
         TIERS.forEach(function(t,i){var vs=lastPredData.tierDailyEng[i];ti.push([t,tierConfig.weights[i]+'%'].concat(vs).concat([vs.reduce(function(a,b){return a+b;},0)]));});
@@ -3343,7 +3309,7 @@ function downloadPredExcel(){
         XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(ti)),'계열별 예상 유입');
     }
 
-    // Sheet 5: 등급별 / 계열별 1인 분배 예상
+    // Sheet 3: 등급별 / 계열별 1인 분배 예상
     if(attendanceData.length&&lastPredData.tierDailyEng){
         var gi=[['등급별 / 계열별 1인 분배 예상 ('+wl+')']];
         var wd2=getNextWeekDates();
@@ -3389,6 +3355,10 @@ function downloadPredExcel(){
         gi.push(['톡이즈 1인'].concat(talkPP).concat([talkPP.reduce(function(a,b){return a+b;},0)]));
         XLSX.utils.book_append_sheet(wb,applyNumFormat(XLSX.utils.aoa_to_sheet(gi)),'등급별 1인 분배');
     }
+
+    // Sheet 4: 최근 한주간 패키지별 매체별 DB 유입 (유입분석 탭과 동일)
+    var pmSheet=buildPackageMediaWS();
+    if(pmSheet)XLSX.utils.book_append_sheet(wb,pmSheet.ws,'패키지별 매체별 DB 유입');
 
     XLSX.writeFile(wb,'DB_차주예상_'+formatDate(new Date())+'.xlsx');
 }
