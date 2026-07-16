@@ -1715,7 +1715,7 @@ function addSchedule(){
         schedules.push(data);
     }
     sortSchedules();saveSchedules();
-    updateScheduleUI();updateTotalPrediction();
+    updateScheduleUI();refreshPredictions();
 }
 function editSchedule(id){
     var s=schedules.find(function(x){return x.id===id;});if(!s)return;
@@ -1822,8 +1822,8 @@ function sortSchedules(){
 }
 function saveSchedules(){markDirty();idbPut('schedules',schedules);}
 function saveManualAdjust(){markDirty();idbPut('manualAdjust',manualAdjust);}
-function removeSchedule(id){if(editingScheduleId===id)cancelEdit();schedules=schedules.filter(function(s){return s.id!==id;});saveSchedules();updateScheduleUI();updateTotalPrediction();}
-function clearAllSchedules(){if(!schedules.length||!confirm('모든 스케줄을 삭제하시겠습니까?'))return;schedules=[];saveSchedules();updateScheduleUI();updateTotalPrediction();}
+function removeSchedule(id){if(editingScheduleId===id)cancelEdit();schedules=schedules.filter(function(s){return s.id!==id;});saveSchedules();updateScheduleUI();refreshPredictions();}
+function clearAllSchedules(){if(!schedules.length||!confirm('모든 스케줄을 삭제하시겠습니까?'))return;schedules=[];saveSchedules();updateScheduleUI();refreshPredictions();}
 function getScheduleDistDay(s){return(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR)?(s.day+1)%7:s.day;}
 function getScheduleDistDate(s){if(!s.schedDate)return null;if(s.hour!==null&&s.hour>=DIST_CUTOFF_HOUR){var d=new Date(s.schedDate+'T00:00:00');d.setDate(d.getDate()+1);return formatDate(d);}return s.schedDate;}
 function getActiveSchedules(){var wd=getNextWeekDates();return schedules.filter(function(s){var dd=getScheduleDistDate(s);return dd&&wd.indexOf(dd)>=0;});}
@@ -2447,7 +2447,13 @@ function updatePrediction(){
     h+=buildPredSection('톡이즈','톡이즈','톡이즈');
     c.innerHTML=h;
     renderManualAdjustUI();
-    updateScheduleUI();updateTotalPrediction();updateTierPrediction();updateShareTab();
+    updateScheduleUI();refreshPredictions();
+}
+
+// updateTotalPrediction()은 lastPredData를 통째로 재할당하므로 updateTierPrediction()이
+// 덧붙이는 계열별 데이터(tierDailyEng 등)가 날아간다. 항상 이 순서로 함께 호출할 것.
+function refreshPredictions(){
+    updateTotalPrediction();updateTierPrediction();updateShareTab();
 }
 
 function updateTotalPrediction(){
@@ -2615,6 +2621,9 @@ function updateTierPrediction(){
     document.getElementById('tierPredTables').innerHTML=tierPredHtml;
     document.getElementById('tierPredSection').style.display='block';
 
+    // Store for Excel — 근태 유무와 무관하게 계열별 데이터는 항상 저장 (아래 early return보다 먼저)
+    lastPredData.tierDailyEng=tierDailyEng;lastPredData.engEffective=engEffective;lastPredData.secEffective=secEffective;lastPredData.secUpperVals=secUpperVals;lastPredData.secLowerVals=secLowerVals;lastPredData.talkEffective=talkEffective;
+
     // --- 그룹별/계열별 1인 분배 (계열별 예상 DB 기준 비례 배분) ---
     if(!attendanceData.length){document.getElementById('groupDistSection').style.display='none';return;}
     document.getElementById('groupDistSection').style.display='block';
@@ -2670,8 +2679,6 @@ function updateTierPrediction(){
     gdHtml+='</tbody></table></div>';
 
     document.getElementById('groupDistTables').innerHTML=gdHtml;
-    // Store for Excel
-    lastPredData.tierDailyEng=tierDailyEng;lastPredData.engEffective=engEffective;lastPredData.secEffective=secEffective;lastPredData.secUpperVals=secUpperVals;lastPredData.secLowerVals=secLowerVals;lastPredData.talkEffective=talkEffective;
 }
 
 function applyCarryover(dailyVals){
