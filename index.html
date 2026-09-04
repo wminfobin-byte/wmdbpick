@@ -2108,9 +2108,10 @@ function buildWeeklyComparisonSection(){
 }
 
 // ======================== 패키지×매체 (최근 한주) ========================
-var PKG_COLS=['더위크','결합','일본어','중국어','스페인어','프랑스어'];
+var PKG_COLS=['더위크','결합','일본어','중국어','스페인어','프랑스어','톡이즈'];
 var PKG_MEDIA_ROWS=['GFA','카카오','메타','GDN','당근'];
 function classifyPackage(mc,dbType){
+    if(dbType==='톡이즈')return'톡이즈';
     if(mc&&/(^|_)tw/i.test(mc))return'더위크';
     if(SEC_LANG_TYPES.indexOf(dbType)>=0)return dbType;
     return'결합';
