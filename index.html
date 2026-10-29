@@ -670,7 +670,7 @@ function applyAuthUI(){
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
 // 근무현황 탭: 휴일 담당 매니저/센터장 {'YYYY-MM-DD':{sudo:[3],jung:[2],head:[1]}}, 수동 출근 변경 {'YYYY-MM-DD':{'이름':1|''}}, 대상 센터
-var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}};
+var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}},wsMgrDir={};
 // 로컬 변경 추적 (localStorage에 영속화)
 var localDirty=localStorage.getItem('localDirty')==='1';
 var _suppressDirty=false;
@@ -856,13 +856,14 @@ async function loadFromStorage(onProgress){
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust'),idbGet('holidayClosed'),
-            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster')
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir')
         ]);
         if(results[12])wsManagers=results[12];
         if(results[13])wsOverrides=results[13];
         if(results[14])wsCenters=results[14];
         if(results[15])wsHoliExtra=results[15];
         if(results[16])wsRoster=results[16];
+        if(results[17])wsMgrDir=results[17];
         if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
@@ -3603,7 +3604,7 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
         var wrapper=JSON.stringify({ts:syncTs,z:compressed});
@@ -3724,6 +3725,7 @@ async function loadFromJSON(){
             if(payload.wsCenters)wsCenters=payload.wsCenters;
             if(payload.wsHoliExtra)wsHoliExtra=payload.wsHoliExtra;
             if(payload.wsRoster)wsRoster=payload.wsRoster;
+            if(payload.wsMgrDir)wsMgrDir=payload.wsMgrDir;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3742,6 +3744,7 @@ async function loadFromJSON(){
                     if(wsCenters)await idbPut('wsCenters',wsCenters);
                     await idbPut('wsHoliExtra',wsHoliExtra);
                     await idbPut('wsRoster',wsRoster);
+                    await idbPut('wsMgrDir',wsMgrDir);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
@@ -3838,7 +3841,9 @@ var WS_C={hdr:'203864',gray:'AFABAB',hol:'DAE3F3',sat:'F8CBAD',wkS:'44546A',wkG:
 var WS_KIND_FILL={half:WS_C.half,halfAbs:WS_C.halfAbs,blue:WS_C.blue,yellow:WS_C.yellow,red:WS_C.red,purple:WS_C.purple};
 var WS_SUBS={'제2외국어':['e','N','b','h'],'영어':['E','N','H']};
 var WS_SUBS_BY_CENTER={'강동':['e','N','b']}; // 원본 양식의 숨김 하위행 수 그대로
-var WS_MGR_SLOTS=[{k:'sudo',i:0,a:'매니저',b:'수도권'},{k:'sudo',i:1},{k:'sudo',i:2},{k:'jung',i:0,b:'중부'},{k:'jung',i:1},{k:'head',i:0,a:'센터장'}];
+// 휴일 담당: 수도권 매니저·중부 매니저·센터장·분배 담당자 각 1명
+var WS_MGR_SLOTS=[{k:'sudo',i:0,a:'매니저',b:'수도권',lab:'수도권 매니저'},{k:'jung',i:0,b:'중부',lab:'중부 매니저'},{k:'head',i:0,a:'센터장',lab:'센터장'},{k:'dist',i:0,a:'분배자',lab:'분배 담당자'}];
+var WS_TITLES=['상무','전무','부사장','사장','대표','이사','본부장','실장','센터장','팀장','파트장','부장','차장','과장','대리','주임','사원','수석','책임','선임','매니저'];
 var WS_DOW=['일','월','화','수','목','금','토'];
 var WS_BLUE=['연차','휴가','경조','공가','장기공석'];
 var _wsLast=null,_wsPasteSegs=[];
@@ -4010,7 +4015,63 @@ function wsSumRow(B,valFn){
 }
 function wsCountOne(list,ds){var n=0;list.forEach(function(pp){if(pp.cells[ds].v===1)n++;});return n;}
 function wsSumNum(list,ds){var n=0;list.forEach(function(pp){var v=pp.cells[ds].v;if(typeof v==='number')n+=v;});return n;}
-function wsMgrName(ds,slot){var e=wsManagers[ds];if(!e||!e[slot.k])return'';return e[slot.k][slot.i]||'';}
+function wsMgrName(ds,slot){var e=wsManagers[ds];if(!e||!e[slot.k])return'';var a=e[slot.k];for(var i=0;i<a.length;i++)if(a[i])return a[i];return'';}
+// ---------- 담당자 직급·센터 명부 (wsMgrDir: {이름:{title,center}}) ----------
+// "강동 강지연 매니저님", "이영주 상무", "김태연책임" → {name, title, center}. 한 번 입력하면 기억해서 다음부터는 이름만 써도 된다
+function wsParseMgrChunk(chunk){
+    var o={name:'',title:'',center:''},cens=WS_CENTERS_DEFAULT.concat(wsEligibleCenters());
+    String(chunk||'').replace(/님/g,' ').split(/[\s()]+/).forEach(function(w){
+        if(!w)return;
+        if(cens.indexOf(w)>=0){o.center=w;return;}
+        if(WS_TITLES.indexOf(w)>=0){if(!o.title)o.title=w;return;}
+        for(var i=0;i<WS_TITLES.length;i++){var t=WS_TITLES[i];if(w.length>t.length+1&&w.slice(-t.length)===t&&/^[가-힣]{2,4}$/.test(w.slice(0,-t.length))){if(!o.name)o.name=w.slice(0,-t.length);if(!o.title)o.title=t;return;}}
+        if(!o.name&&/^[가-힣]{2,4}[A-Za-z]?$/.test(w))o.name=w;
+    });
+    return o.name?o:null;
+}
+// 기본 명부 (화면의 [담당자 명부]에서 바꾸면 wsMgrDir이 우선). self=본인 → 보고 문구에 직급·님 없이 이름만
+var WS_MGR_DIR_DEFAULT={'김태연':{title:'책임'},'박미정':{title:'책임'},'이영주':{title:'상무'},'한지우':{title:'과장'},'조찬기':{title:'과장'},'박하늘':{title:'대리'},'정보빈':{title:'사원',self:true}};
+function wsDirGet(name){
+    var e=Object.assign({},WS_MGR_DIR_DEFAULT[name]||{},wsMgrDir[name]||{});
+    if(e.removed)e={};
+    if(!e.center){ // 센터는 근태파일(담당 공란인 팀장·매니저 포함)에서 찾는다
+        var hit=attendanceData.find(function(p){return wsName(p.name)===name;});
+        if(hit&&hit.center)e.center=String(hit.center).trim();
+    }
+    return e;
+}
+function wsRememberMgr(o){
+    if(!o||!o.name||(!o.title&&!o.center))return;
+    var e=Object.assign({},wsMgrDir[o.name]||{});delete e.removed;
+    if(o.title)e.title=o.title;if(o.center)e.center=o.center;
+    wsMgrDir[o.name]=e;wsPersist('wsMgrDir',wsMgrDir);
+}
+// 표시용: [센터] 이름 직급님 (매니저 칸은 직급 미등록이면 '매니저', 본인은 이름만)
+function wsMgrLabel(name,withCenter){
+    if(!name)return'';var e=wsDirGet(name),title=e.title||(withCenter?'매니저':'');
+    var c=withCenter&&e.center?e.center+' ':'';
+    if(e.self)return c+name;
+    return c+name+(title?' '+title+'님':'');
+}
+// ---------- 담당자 명부 편집 ----------
+function wsDirLines(){
+    var names={};Object.keys(WS_MGR_DIR_DEFAULT).forEach(function(n){names[n]=1;});Object.keys(wsMgrDir).forEach(function(n){names[n]=1;});
+    return Object.keys(names).map(function(n){var e=Object.assign({},WS_MGR_DIR_DEFAULT[n]||{},wsMgrDir[n]||{});if(e.removed)return'';return n+(e.title?' '+e.title:'')+(e.center?' '+e.center:'')+(e.self?' 본인':'');}).filter(Boolean).join('\n');
+}
+function wsOpenDir(){var w=document.getElementById('wsDirBox');if(!w)return;w.style.display=w.style.display==='none'?'':'none';}
+function wsSaveDir(){
+    var el=document.getElementById('wsDirText');if(!el)return;
+    var next={},seen={};
+    el.value.split('\n').forEach(function(line){
+        var self=/본인|님\s*생략|님\s*빼/.test(line);
+        var o=wsParseMgrChunk(line.replace(/본인|님\s*생략|님\s*빼기?/g,' '));if(!o)return;
+        seen[o.name]=1;next[o.name]={title:o.title||'',center:o.center||''};if(self)next[o.name].self=true;
+        if(!o.center)delete next[o.name].center;
+    });
+    Object.keys(WS_MGR_DIR_DEFAULT).forEach(function(n){if(!seen[n])next[n]={removed:true};});
+    wsMgrDir=next;wsPersist('wsMgrDir',wsMgrDir);
+    var y=window.scrollY;wsRender();window.scrollTo(0,y);
+}
 
 // ---------- 셀 모델 ----------
 // spec: {v, fill, bold, color, sz, fmt:'n1'|'n0'|'d', h:'center'|'', bd:'all'|'hdrL'|'hdrM'|'hdrR'|'none', wrap, disp, attrs}
@@ -4246,13 +4307,55 @@ function wsMgrHTML(B){
     var h='<div class="table-wrap" style="margin-bottom:0;"><table class="ws-mgr"><thead><tr><th>구분</th>';
     off.forEach(function(d){var n=B.workCnt[d.ds]||0;h+='<th class="'+(n?'':'ws-off')+'" style="background:#'+(d.fill||'fff')+'">'+d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+')<br><span style="font-weight:500;font-size:0.68rem;">근무 '+(Math.round(n*10)/10)+'명</span></th>';});
     h+='</tr></thead><tbody>';
-    var labels=['수도권 매니저 1','수도권 매니저 2','수도권 매니저 3','중부 매니저 1','중부 매니저 2','센터장'];
-    WS_MGR_SLOTS.forEach(function(slot,si){
-        h+='<tr><th style="text-align:left;">'+labels[si]+'</th>';
-        off.forEach(function(d){h+='<td><input type="text" value="'+wsEsc(wsMgrName(d.ds,slot))+'" data-ds="'+d.ds+'" data-k="'+slot.k+'" data-i="'+slot.i+'" onchange="wsSetMgr(this)"></td>';});
+    WS_MGR_SLOTS.forEach(function(slot){
+        h+='<tr><th style="text-align:left;">'+slot.lab+'</th>';
+        off.forEach(function(d){var nm=wsMgrName(d.ds,slot);h+='<td><input type="text" value="'+wsEsc(wsMgrLabel(nm,slot.k==='sudo'||slot.k==='jung'))+'" data-ds="'+d.ds+'" data-k="'+slot.k+'" onchange="wsSetMgr(this)"></td>';});
         h+='</tr>';
     });
     return h+'</tbody></table></div>';
+}
+// ---------- 주말근무 보고 문구 (메신저 보고용) ----------
+function wsReportDays(B){return B.days.filter(function(d){return d.inM&&d.type!=='wk';});}
+// 기본 날짜: 근태파일 날짜 이후 근무자가 있는 첫 휴일 → 없으면 근무자가 있는 마지막 휴일
+function wsReportDefault(B){
+    var off=wsReportDays(B);if(!off.length)return'';
+    var fd=B.M.fileDate||'',has=function(d){return B.workCnt[d.ds]>0;};
+    var up=off.filter(function(d){return d.ds>fd&&has(d);});if(up.length)return up[0].ds;
+    var w=off.filter(has);if(w.length)return w[w.length-1].ds;
+    var nx=off.filter(function(d){return d.ds>fd;});return(nx.length?nx[0]:off[off.length-1]).ds;
+}
+var _wsReportDs='';
+function wsReportText(B,ds){
+    var d=B.days.find(function(x){return x.ds===ds;});if(!d)return'';
+    var lab={'영어':'뇌새김 영어','제2외국어':'제2외국어','톡이즈':'톡이즈'},tot=0,lines=[];
+    ['영어','제2외국어','톡이즈'].forEach(function(g){
+        var l=B.people.filter(function(pp){return pp.group===g;});if(!l.length)return;
+        var n=l.filter(function(pp){var v=pp.cells[ds]&&pp.cells[ds].v;return typeof v==='number'&&v>0;}).length;
+        tot+=n;lines.push('# '+lab[g]+' '+n+'명');
+    });
+    var nm=function(k){return wsMgrName(ds,{k:k});};
+    var t='['+d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+') 휴일근무 신청인원]\n'+lines.join('\n')+'\n\n총 '+tot+'명\n\n';
+    t+='센터장 : '+wsMgrLabel(nm('head'))+'\n';
+    t+='분배 담당자 : '+wsMgrLabel(nm('dist'))+'\n';
+    t+='수도권 매니저 : '+wsMgrLabel(nm('sudo'),true)+'\n';
+    t+='충청권 매니저 : '+wsMgrLabel(nm('jung'),true);
+    return t;
+}
+function wsReportHTML(B){
+    var off=wsReportDays(B);if(!off.length)return'';
+    if(!_wsReportDs||!off.some(function(d){return d.ds===_wsReportDs;}))_wsReportDs=wsReportDefault(B);
+    var h='<div class="ws-card"><h3>주말근무 보고 문구</h3><p class="ws-sub">근무일정(출근 체크)과 휴일 담당자 입력으로 자동 생성됩니다 · 반차(0.5) 근무도 1명으로 셉니다</p>';
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;"><select onchange="_wsReportDs=this.value;var y=window.scrollY;wsRender();window.scrollTo(0,y);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
+    off.forEach(function(d){h+='<option value="'+d.ds+'"'+(d.ds===_wsReportDs?' selected':'')+'>'+d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+') · 근무 '+(Math.round((B.workCnt[d.ds]||0)*10)/10)+'명</option>';});
+    h+='</select><button class="btn btn-primary" onclick="wsCopyReport()">문구 복사</button><span id="wsReportMsg" style="font-size:0.75rem;color:var(--green);"></span></div>';
+    h+='<textarea id="wsReportText" rows="11" readonly style="width:100%;max-width:520px;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:0.82rem;font-family:inherit;">'+wsEsc(wsReportText(B,_wsReportDs))+'</textarea></div>';
+    return h;
+}
+function wsCopyReport(){
+    var el=document.getElementById('wsReportText');if(!el)return;
+    var done=function(){var m=document.getElementById('wsReportMsg');if(m){m.textContent='복사했습니다';setTimeout(function(){m.textContent='';},1500);}};
+    var fb=function(){el.select();try{document.execCommand('copy');}catch(e){}done();};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(el.value).then(done,fb);else fb();
 }
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
@@ -4273,7 +4376,8 @@ function wsRender(){
     var dl=function(ds){var d=new Date(ds+'T00:00:00');return(d.getMonth()+1)+'/'+d.getDate()+'('+WS_DOW[d.getDay()]+')';};
     if(cand.length)h+='<div class="ws-holi"><b>⚠ 평일인데 출근자가 거의 없는 날이 있습니다.</b> 임시공휴일·대체공휴일이면 휴일로 지정하세요:'+cand.map(function(d){return'<button onclick="wsToggleHoliday(\''+d.ds+'\')">'+dl(d.ds)+' 근무 '+(Math.round((B.workCnt[d.ds]||0)*10)/10)+'명 → 휴일 지정</button>';}).join('')+'</div>';
     h+='<p class="ws-sub" style="margin:-4px 0 10px;">평일 공휴일은 공휴일 목록(대체공휴일 포함)으로 자동 판단합니다. 목록에 없는 임시공휴일·회사 휴무는 <b>표의 날짜 칸을 클릭</b>해 휴일로 지정/해제하세요.'+(man.length?' · 수동 지정: '+man.map(function(ds){return'<b>'+dl(ds)+' '+(wsHoliExtra[ds]?'휴일':'평일')+'</b>';}).join(', '):'')+'</p>';
-    h+='<div class="ws-card"><h3>휴일 담당 매니저 · 센터장</h3><p class="ws-sub">토·일·공휴일별로 입력하면 종합현황과 엑셀에 표시됩니다 (입력 즉시 저장)</p>'+wsMgrHTML(B)+'</div>';
+    h+='<div class="ws-card"><h3>휴일 담당자</h3><p class="ws-sub">토·일·공휴일별로 입력하면 종합현황·엑셀·보고 문구에 표시됩니다 (입력 즉시 저장) · <b>"강동 강지연 매니저", "이영주 상무"</b>처럼 센터·직급을 한 번 같이 쓰면 기억해서 다음부터는 이름만 써도 됩니다</p>'+wsMgrHTML(B)+'<div style="margin-top:8px;"><button class="btn" style="background:#eef2ff;color:#3730a3;font-size:0.76rem;padding:4px 10px;" onclick="wsOpenDir()">담당자 명부 (직급) 보기·수정</button></div><div id="wsDirBox" style="display:none;margin-top:8px;"><p class="ws-sub">한 줄에 한 명: <b>이름 직급 [센터] [본인]</b> · 예) 김태연 책임 / 이영주 상무 / 정보빈 사원 본인 · 직급이 바뀌면 여기서 고치고 [저장] (동기화됨). 매니저 칸에서 직급이 없으면 \'매니저\'로 표시, 센터는 근태파일에서 자동으로 찾습니다</p><textarea id="wsDirText" rows="8" style="width:100%;max-width:420px;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:0.8rem;font-family:inherit;">'+wsEsc(wsDirLines())+'</textarea><div><button class="btn btn-primary" style="font-size:0.78rem;padding:4px 12px;" onclick="wsSaveDir()">저장</button></div></div></div>';
+    h+=wsReportHTML(B);
     h+='<div class="ws-card"><h3>종합현황</h3><p class="ws-sub">그룹별·센터 블록은 1.0 근무만, 센터별 합계는 반차(0.5) 포함 · 평일 공휴일은 휴일로 집계</p><div class="ws-scroll">'+wsModelHTML(wsModelSummary(B))+'</div></div>';
     h+='<div class="ws-card"><h3>근무일정</h3><p class="ws-sub">토·일·공휴일 칸을 클릭하면 출근(1.0) ↔ 해제를 바꿀 수 있습니다 (보라 테두리 = 수동 변경)</p>';
     h+='<div class="ws-legend"><span><i style="background:#'+WS_C.half+'"></i>반차 0.5</span><span><i style="background:#'+WS_C.halfAbs+'"></i>오전/오후 결근 0.5</span><span><i style="background:#'+WS_C.blue+'"></i>연차·휴가·경조·공가·장기공석</span><span><i style="background:#'+WS_C.yellow+'"></i>대체휴무</span><span><i style="background:#'+WS_C.red+'"></i>결근·퇴사</span><span><i style="background:#'+WS_C.sat+'"></i>토요일</span><span><i style="background:#'+WS_C.hol+'"></i>평일 공휴일</span><span><i style="background:#'+WS_C.gray+'"></i>휴무</span></div>';
@@ -4283,10 +4387,10 @@ function wsRender(){
 }
 function wsPersist(key,val){markDirty();try{idbPut(key,val);}catch(e){}}
 function wsSetMgr(el){
-    var ds=el.dataset.ds,k=el.dataset.k,i=+el.dataset.i,v=el.value.trim();
-    if(!wsManagers[ds])wsManagers[ds]={sudo:['','',''],jung:['',''],head:['']};
-    if(!wsManagers[ds][k])wsManagers[ds][k]=[];
-    wsManagers[ds][k][i]=v;
+    var ds=el.dataset.ds,k=el.dataset.k,o=wsParseMgrChunk(el.value.trim());
+    if(!wsManagers[ds])wsManagers[ds]={};
+    wsManagers[ds][k]=[o?o.name:''];
+    if(o)wsRememberMgr(o);
     wsPersist('wsManagers',wsManagers);
     var y=window.scrollY;wsRender();window.scrollTo(0,y);
 }
@@ -4370,15 +4474,26 @@ function wsFindCenters(body,centers){
     return out;
 }
 // "매니저 : 김태연", "강지연 매니저", "센터장: 홍길동" → 담당자로 빼고, 본문에서는 지운다
+// 명단 속 담당자: "센터장 : 이영주 상무님", "분배 담당자 : 정보빈", "수도권 매니저 : 강동 강지연 매니저님", "충청권 매니저 : 대전 김태연 책임님", "강지연 매니저"
+// → {role:'head'|'dist'|'mgr', region:'sudo'|'jung'|'', name, title, center}. 본문에서는 지운다
 function wsExtractMgrs(body){
-    var list=[],t=body,blank=function(s){return Array(s.length+1).join(' ');};
-    var nameRe=/^[가-힣]{2,4}[A-Za-z]?$/;
-    t=t.replace(/(매니저|센터장)\s*님?\s*[:：]\s*([^\n]*?)(?=매니저|센터장|\n|$)/g,function(all,role,rest){
-        rest.split(/[\s,，·、\/;()]+/).forEach(function(w){w=w.replace(/님$/,'');if(nameRe.test(w))list.push({role:role,name:w});});
-        return blank(all);
+    var list=[],blank=function(s){return Array(s.length+1).join(' ');};
+    var roleRe=/(수도권|충청권?|중부권?)?[ \t]*(센터장|분배[ \t]*담당자?|분배자|매니저)[ \t]*님?[ \t]*[:：]/g;
+    var regionOf=function(r){return!r?'':/수도/.test(r)?'sudo':'jung';};
+    var roleOf=function(r){return/센터장/.test(r)?'head':/분배/.test(r)?'dist':'mgr';};
+    var lines=body.split('\n').map(function(line){
+        var ms=[],m;roleRe.lastIndex=0;
+        while((m=roleRe.exec(line)))ms.push({i:m.index,end:roleRe.lastIndex,region:regionOf(m[1]),role:roleOf(m[2])});
+        if(!ms.length)return line;
+        ms.forEach(function(mk,j){
+            var seg=line.slice(mk.end,j+1<ms.length?ms[j+1].i:line.length);
+            seg.split(/[,，、\/·;]+/).forEach(function(ch){var o=wsParseMgrChunk(ch);if(o)list.push(Object.assign(o,{role:mk.role,region:mk.region}));});
+        });
+        return line.slice(0,ms[0].i)+blank(line.slice(ms[0].i));
     });
+    var t=lines.join('\n');
     t=t.replace(/(^|[^가-힣])([가-힣]{2,4}[A-Za-z]?)[ \t]*(매니저|센터장)(님)?/g,function(all,pre,nm,role){
-        list.push({role:role,name:nm});return pre+blank(all.slice(pre.length));
+        list.push({role:role==='센터장'?'head':'mgr',region:'',name:nm,title:role==='매니저'?'매니저':'',center:''});return pre+blank(all.slice(pre.length));
     });
     return{list:list,rest:t};
 }
@@ -4402,7 +4517,7 @@ function wsMatchNames(text,pool){
             if(idx>=0){found.push(pp);t=t.slice(0,idx)+Array(nm.length+1).join(' ')+t.slice(idx+nm.length);break;}
         }
     });
-    var stop=/센터|명단|근무|신청|휴무|휴일|주말|총|입니다|팀$|오전|오후|일본어|중국어|영어|외국어|스페인|프랑스|출근|요일|명$|감사|부탁|드립니다|확인|안녕|토|일$|현황|지원|인원|충청|중부|수도권|서울|매니저|센터장|팀장|실장|참석|제외|추가|변경|공유|드려요|합니다|있습니다|아래|이상|최종/;
+    var stop=/센터|명단|근무|신청|휴무|휴일|주말|총|입니다|팀$|오전|오후|일본어|중국어|영어|외국어|스페인|프랑스|출근|요일|명$|감사|부탁|드립니다|확인|안녕|토|일$|현황|지원|인원|충청|중부|수도권|서울|매니저|센터장|뇌새김|톡이즈|분배|담당|상무|전무|이사|부장|차장|과장|대리|주임|책임|선임|수석|본부장|팀장|실장|참석|제외|추가|변경|공유|드려요|합니다|있습니다|아래|이상|최종/;
     var bad=t.split(/[\s,，·、\/:;()\[\]*.~\-]+/).map(function(w){return w.replace(/님$/,'');}).filter(function(w){return/^[가-힣]{2,4}[A-Za-z]?$/.test(w)&&!stop.test(w)&&WS_CENTERS_DEFAULT.indexOf(w)<0&&!pool.some(function(pp){return pp.center===w;});});
     return{found:found,bad:bad,amb:amb};
 }
@@ -4423,7 +4538,7 @@ function wsPreviewPaste(){
             var off=s.pool.filter(function(pp){return s.found.indexOf(pp)<0&&pp.cells[s.ds]&&pp.cells[s.ds].v===1;});
             if(off.length)h+='<div style="margin-top:3px;color:var(--slate);">해제: '+off.map(function(pp){return wsEsc(pp.name);}).join(', ')+'</div>';
         }
-        if(s.mgrs.length)h+='<div style="margin-top:3px;color:#1d4ed8;">담당 '+(mode==='remove'?'삭제':'입력')+': '+s.mgrs.map(function(g){return wsEsc(g.name)+' <small>('+(g.role==='센터장'?'센터장':(s.region==='jung'?'중부':'수도권')+' 매니저')+')</small>';}).join(', ')+'</div>';
+        if(s.mgrs.length)h+='<div style="margin-top:3px;color:#1d4ed8;">담당 '+(mode==='remove'?'삭제':'입력')+': '+s.mgrs.map(function(g){return wsEsc(g.name+(g.title?' '+g.title:''))+' <small>('+({head:'센터장',dist:'분배 담당자',sudo:'수도권 매니저',jung:'중부 매니저'}[wsMgrSlotKey(g,s)])+')</small>';}).join(', ')+'</div>';
         if(s.amb.length)h+='<div style="margin-top:3px;color:#b45309;">⚠ 동명이인이라 체크하지 않음 (센터명을 넣어 다시 붙여넣기): '+s.amb.map(wsEsc).join(', ')+'</div>';
         if(s.bad.length)h+='<div style="margin-top:3px;">명단에서 못 찾은 이름:'+s.bad.map(function(w){return'<span class="ws-pv-name ws-pv-bad">'+wsEsc(w)+'</span>';}).join('')+'</div>';
         h+='</div>';
@@ -4431,18 +4546,22 @@ function wsPreviewPaste(){
     el.innerHTML=h;
 }
 // 명단의 매니저·센터장을 휴일 담당 칸에 넣는다 (이미 있으면 그대로, 빈 칸부터 채움)
+function wsMgrSlotKey(g,s){
+    if(g.role==='head'||g.role==='dist')return g.role;
+    if(g.region)return g.region;
+    var c=g.center||wsDirGet(g.name).center;
+    if(c)return WS_REGION_JUNG.indexOf(c)>=0?'jung':'sudo';
+    return s.region;
+}
+// 명단의 담당자를 휴일 담당 칸(각 1명)에 넣는다. 직급·센터가 있으면 명부에도 기억
 function wsApplyMgrs(s,mode){
-    var e=wsManagers[s.ds];
-    if(!e)e=wsManagers[s.ds]={sudo:['','',''],jung:['',''],head:['']};
-    var size={sudo:3,jung:2,head:1};
+    var e=wsManagers[s.ds]||(wsManagers[s.ds]={});
     s.mgrs.forEach(function(g){
-        var k=g.role==='센터장'?'head':s.region,arr=e[k]||(e[k]=[]);
-        while(arr.length<size[k])arr.push('');
-        var at=arr.indexOf(g.name);
-        if(mode==='remove'){if(at>=0)arr[at]='';return;}
-        if(at>=0)return;
-        var free=arr.indexOf('');
-        if(free>=0)arr[free]=g.name;else arr[size[k]-1]=g.name;
+        var k=wsMgrSlotKey(g,s);
+        if(mode==='remove'){if(wsMgrName(s.ds,{k:k})===g.name)e[k]=[''];return;}
+        e[k]=[g.name];
+        if(g.title==='매니저'&&wsDirGet(g.name).title)g=Object.assign({},g,{title:''});
+        wsRememberMgr(g);
     });
 }
 function wsApplyPaste(){
