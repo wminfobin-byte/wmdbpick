@@ -25,10 +25,20 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 - **IndexedDB** (`db_forecast_idb`) — allData, schedules, attendanceData, tierConfig 등 영구 저장
 - localStorage 마이그레이션 코드 존재 (레거시)
 
+### 성능 관련 규칙
+- **집계 결과 캐시** `_aggMemo`: `getGlobalDOWDateCounts`/`getBatchDOWDateCounts`/`getDOWAverageByType`/`getMediaDOWTable(ByPeriod)`/`getSmartMediaDOWTable(ByPeriod)`(키에 `workingDayToggle` 포함)/`getDowLangMediaByWeek`/`getLastInflowDateStr`. 원본은 `_raw_*`. **allData를 바꾸면 반드시 `invalidateAgg()` 호출** (캐시가 같이 비워짐). 결과에 영향을 주는 새 전역 상태를 추가하면 캐시 키에 넣을 것
+- 공휴일 조회는 `KR_HOLI_SET.has()` (배열 indexOf 금지 — 레코드 순회 안에서 호출됨)
+- **data.json 형식** `{"ts":"<lastSyncTime>","z":"<gzip base64>"}` — `ts`가 반드시 맨 앞. `fetchRemoteSyncTs()`가 Range 요청으로 앞 200바이트만 읽어 원격 시각을 확인하고, 원격이 더 새로울 때만 전체를 받는다. ts 없는 구형식이면 전체 다운로드로 대체
+
 ### 탭 구조
 1. **분석** — 요일별/매체별 평균, 타임보드/스페셜 시간대별 분석
 2. **차주 예상** — 요일별 예상 DB수, 타임보드/스페셜 스케줄, 계열별 배분, 1인 분배 예상
 3. **공유** — 예상 결과 공유용 뷰
+4. **근무현황** (로그인 전용) — 근태보고(`attendanceData`)로 원본 `뇌새김 n월 근무현황파일_종합` 엑셀의 종합현황·근무일정 시트를 재현. `ws*` 함수군 (index.html 하단)
+   - 셀 모델(`wsModelSummary`/`wsModelSchedule`) 하나로 화면(`wsModelHTML`)과 엑셀(`wsToSheet`, xlsx-js-style+JSZip 지연 로드)을 같이 만든다
+   - 근태 텍스트 변환 `wsParseVal`: 출근→1, 반차→0.5(연두), 오전/오후 결근→0.5(주황), 연차·휴가·경조·공가·장기공석→파랑, 대체휴무→노랑, 결근·퇴사→빨강
+   - 집계: 평일 / 토요(토요일만) / 휴일(일요일+평일 공휴일). 그룹별·센터 블록은 1.0만 카운트, 센터별 합계는 0.5 포함 (원본 수식과 동일)
+   - IDB `wsManagers`(휴일 담당 매니저·센터장), `wsOverrides`(붙여넣기·클릭 수동 출근 변경, 근태 재업로드에도 유지), `wsCenters`(대상 센터, 기본 당산·강동·대전·유성) — GitHub 동기화 payload에 포함
 
 ## Key Data Model
 

@@ -281,6 +281,40 @@
             .share-kpi{border-left-width:4px}
             .share-table,.age-table{border:1px solid #ddd}
         }
+        /* 근무현황 탭 */
+        .ws-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+        .ws-bar .ws-meta{font-size:0.8rem;color:var(--slate)}
+        .ws-bar .ws-meta b{color:var(--navy)}
+        .ws-btns{display:flex;gap:8px;flex-wrap:wrap}
+        .ws-card{background:white;border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:18px}
+        .ws-card h3{font-size:0.95rem;color:var(--navy);margin-bottom:4px}
+        .ws-card .ws-sub{font-size:0.74rem;color:var(--slate-light);margin-bottom:10px}
+        .ws-scroll{overflow:auto;max-height:78vh;border:1px solid var(--gray-200)}
+        table.ws-x{border-collapse:collapse;width:auto;table-layout:fixed;font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;line-height:1.1}
+        table.ws-x td{padding:0 2px;border:1px solid #000;white-space:nowrap;overflow:hidden;text-overflow:clip;font-variant-numeric:tabular-nums}
+        table.ws-x tr:hover{background:transparent}
+        table.ws-x td.ws-nb{border:none}
+        table.ws-x td.ws-tg{cursor:pointer}
+        table.ws-x td.ws-tg:hover{outline:2px solid var(--blue);outline-offset:-2px}
+        table.ws-x td.ws-ov{box-shadow:inset 0 0 0 2px #7c3aed}
+        table.ws-x tr.ws-hdr td{position:sticky;top:0;z-index:2}
+        table.ws-x td.ws-st{position:sticky;z-index:1}
+        table.ws-x tr.ws-hdr td.ws-st{z-index:3}
+        .ws-centers{display:flex;gap:10px;flex-wrap:wrap;font-size:0.78rem;color:var(--slate);align-items:center}
+        .ws-centers label{display:inline-flex;gap:4px;align-items:center;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:14px;padding:3px 10px;cursor:pointer}
+        table.ws-mgr{width:auto;border-collapse:collapse}
+        table.ws-mgr th,table.ws-mgr td{border:1px solid var(--gray-200);padding:4px 6px;font-size:0.76rem;text-align:center;white-space:nowrap}
+        table.ws-mgr th{text-transform:none;letter-spacing:0}
+        table.ws-mgr th.ws-off{color:var(--slate-light);font-weight:500}
+        table.ws-mgr input{width:64px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:4px;font-size:0.76rem;text-align:center}
+        table.ws-mgr input:focus{outline:none;border-color:var(--blue)}
+        .ws-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:0.72rem;color:var(--slate);margin-bottom:8px}
+        .ws-legend span{display:inline-flex;align-items:center;gap:4px}
+        .ws-legend i{display:inline-block;width:14px;height:10px;border:1px solid #999}
+        .ws-pv-seg{border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+        .ws-pv-seg .ws-pv-h{font-weight:700;color:var(--navy);margin-bottom:3px}
+        .ws-pv-name{display:inline-block;background:var(--blue-pale);color:var(--blue);border-radius:10px;padding:1px 8px;margin:2px;font-size:0.74rem}
+        .ws-pv-bad{background:var(--red-bg);color:var(--red)}
     </style>
 </head>
 <body>
@@ -298,6 +332,7 @@
     <div class="tab active" data-tab="analysis">유입 분석</div>
     <div class="tab" data-tab="prediction">차주 예상</div>
     <div class="tab" data-tab="share">DB 예상</div>
+    <div class="tab" data-tab="workstatus">근무현황</div>
 </div>
 <div class="content">
     <div class="tab-content active" id="tab-analysis">
@@ -473,6 +508,28 @@
             <p>차주 예상 데이터가 있어야 공유 페이지를 생성할 수 있습니다</p>
         </div>
     </div>
+
+    <!-- Tab 4: 근무현황 (근태 → 종합현황/근무일정) -->
+    <div class="tab-content" id="tab-workstatus"><div id="wsRoot"></div></div>
+</div>
+
+<!-- 휴일근무 명단 붙여넣기 -->
+<div class="modal-overlay" id="wsPasteModal">
+    <div class="modal" style="max-width:760px;">
+        <div class="modal-header"><h3>휴일근무 명단 붙여넣기</h3><span class="modal-close" onclick="wsClosePaste()">&times;</span></div>
+        <p style="font-size:0.78rem;color:var(--slate);margin-bottom:8px;">메신저로 받은 명단을 그대로 붙여넣으세요. 날짜(예: <b>10월 31일</b>)·센터명·이름을 자동으로 찾습니다. 여러 날짜/센터를 한 번에 붙여넣어도 됩니다.</p>
+        <textarea id="wsPasteText" rows="9" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:0.82rem;font-family:inherit;resize:vertical;" placeholder="[10월 31일 (토) 당산센터 휴무근무 신청 명단]&#10;일본어팀 : 김선숙,김현진,임남희, 황인태,신선희,임소영,이경임&#10;*총  7명 입니다" oninput="wsPreviewPaste()"></textarea>
+        <div style="display:flex;gap:16px;align-items:center;margin:10px 0;font-size:0.8rem;flex-wrap:wrap;">
+            <label><input type="radio" name="wsPasteMode" value="add" checked onchange="wsPreviewPaste()"> 출근 체크 (1.0)</label>
+            <label><input type="radio" name="wsPasteMode" value="replace" onchange="wsPreviewPaste()"> 이 명단으로 교체 <span style="color:var(--slate-light);">(해당 센터·날짜에서 명단에 없는 사람은 해제)</span></label>
+            <label><input type="radio" name="wsPasteMode" value="remove" onchange="wsPreviewPaste()"> 출근 삭제</label>
+        </div>
+        <div id="wsPastePreview" style="font-size:0.8rem;"></div>
+        <div class="modal-actions">
+            <button class="btn" style="background:#eee;color:#333;" onclick="wsClosePaste()">취소</button>
+            <button class="btn btn-primary" id="wsPasteApply" onclick="wsApplyPaste()">적용</button>
+        </div>
+    </div>
 </div>
 
 <!-- Login Overlay -->
@@ -582,7 +639,7 @@ function applyAuthUI(){
     var tabs=document.querySelectorAll('.tab');
     tabs.forEach(function(t){
         var tabName=t.dataset.tab;
-        if(tabName==='analysis'||tabName==='prediction'){
+        if(tabName==='analysis'||tabName==='prediction'||tabName==='workstatus'){
             t.classList.toggle('tab-hidden',!isLoggedIn);
         }
     });
@@ -605,6 +662,8 @@ function applyAuthUI(){
 // ======================== State ========================
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
+// 근무현황 탭: 휴일 담당 매니저/센터장 {'YYYY-MM-DD':{sudo:[3],jung:[2],head:[1]}}, 수동 출근 변경 {'YYYY-MM-DD':{'이름':1|''}}, 대상 센터
+var wsManagers={},wsOverrides={},wsCenters=null;
 // 로컬 변경 추적 (localStorage에 영속화)
 var localDirty=localStorage.getItem('localDirty')==='1';
 var _suppressDirty=false;
@@ -789,8 +848,12 @@ async function loadFromStorage(onProgress){
             idbGet('attendData'),idbGet('attendFiles'),idbGet('attendMonth'),
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
-            idbGet('manualAdjust'),idbGet('holidayClosed')
+            idbGet('manualAdjust'),idbGet('holidayClosed'),
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters')
         ]);
+        if(results[12])wsManagers=results[12];
+        if(results[13])wsOverrides=results[13];
+        if(results[14])wsCenters=results[14];
         if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
@@ -819,7 +882,7 @@ async function loadFromStorage(onProgress){
         if(results[9])actualInflowFiles=results[9];
         if(results[10])manualAdjust=Object.assign({'영어':{level:0,offset:0},'일본어':{level:0,offset:0},'중국어':{level:0,offset:0},'스페인어':{level:0,offset:0},'프랑스어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},results[10]);
         if(results[11])holidayClosed=results[11];
-    }catch(e){allData=[];uploadedFiles=[];}
+    }catch(e){allData=[];uploadedFiles=[];invalidateAgg();}
     if(onProgress)await onProgress(75);
     // Migrate from localStorage if IndexedDB is empty but localStorage has data
     if(!allData.length){
@@ -914,11 +977,8 @@ function formatDate(d){if(!d)return'';return d.getFullYear()+'-'+String(d.getMon
 function getNextWeekRange(){
     // 데이터의 마지막 유입일 기준, 그 다음날부터 바로 돌아오는 토~금
     var lastDate=null;
-    if(allData.length){
-        allData.forEach(function(d){
-            if(d.dateStr){var dd=new Date(d.dateStr+'T00:00:00');if(!lastDate||dd>lastDate)lastDate=dd;}
-        });
-    }
+    var lastDs=allData.length?getLastInflowDateStr():'';
+    if(lastDs)lastDate=new Date(lastDs+'T00:00:00');
     if(!lastDate){lastDate=new Date();lastDate.setHours(0,0,0,0);}
     // lastDate 다음날부터 가장 가까운 토요일 찾기
     var after=new Date(lastDate);after.setDate(after.getDate()+1);
@@ -997,7 +1057,7 @@ async function handleAttendanceFile(file){
         saveAttendance();
         updateLoading(90,'화면 업데이트 중...');
         await new Promise(function(r2){setTimeout(r2,30);});
-        updateAll();updateModalUI();
+        updateAll();updateModalUI();wsRender();
         updateLoading(100,'완료! ('+r.people.length+'명)');
         await new Promise(function(r2){setTimeout(r2,400);});
     }catch(err){alert('근태 파일 오류: '+err.message);}
@@ -1337,12 +1397,12 @@ function toggleActualCompare(prefix){
 }
 
 // ======================== Analysis Functions ========================
-function getGlobalDOWDateCounts(){var c={};WEEK_ORDER.forEach(function(d){c[d]={};});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&!recInflowHoli(d))c[d.dayOfWeek][d.dateStr]=true;});var r={};WEEK_ORDER.forEach(function(d){r[d]=Math.max(Object.keys(c[d]).length,1);});return r;}
+function _raw_getGlobalDOWDateCounts(){var c={};WEEK_ORDER.forEach(function(d){c[d]={};});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&!recInflowHoli(d))c[d.dayOfWeek][d.dateStr]=true;});var r={};WEEK_ORDER.forEach(function(d){r[d]=Math.max(Object.keys(c[d]).length,1);});return r;}
 function getDailySummary(){var m={};allData.forEach(function(d){if(!m[d.dateStr]){m[d.dateStr]={date:d.inflowDate,dateStr:d.dateStr,total:0};DB_TYPES.forEach(function(t){m[d.dateStr][t]=0;});m[d.dateStr]['타임보드']=0;m[d.dateStr]['스페셜']=0;}var r=m[d.dateStr];if(d.isTimeboard)r['타임보드']++;else if(d.isSpecial)r['스페셜']++;else r[d.dbType]++;r.total++;});return Object.values(m).sort(function(a,b){return a.date-b.date;});}
-function getDOWAverageByType(){var gc=getGlobalDOWDateCounts(),s={};DB_TYPES.forEach(function(dt){s[dt]={};WEEK_ORDER.forEach(function(d){s[dt][d]=0;});});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&!recInflowHoli(d))s[d.dbType][d.dayOfWeek]++;});var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){r[dt][d]=Math.round(s[dt][d]/gc[d]);});});return r;}
-function getMediaDOWTable(f){var gc=getGlobalDOWDateCounts(),s={};MEDIA_TYPES.forEach(function(m){s[m]={};WEEK_ORDER.forEach(function(d){s[m][d]=0;});});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.dbType!==f||recInflowHoli(d))return;if(s[d.media])s[d.media][d.dayOfWeek]++;});var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=Math.round(s[m][d]/gc[d]);});});return r;}
-function getBatchDOWDateCounts(p){var c={};WEEK_ORDER.forEach(function(d){c[d]={};});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.batchPeriod!==p||recBatchHoli(d))return;c[d.batchDayOfWeek][d.batchDate]=true;});var r={};WEEK_ORDER.forEach(function(d){r[d]=Math.max(Object.keys(c[d]).length,1);});return r;}
-function getMediaDOWTableByPeriod(f,p){var gc=getBatchDOWDateCounts(p),s={};MEDIA_TYPES.forEach(function(m){s[m]={};WEEK_ORDER.forEach(function(d){s[m][d]=0;});});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.dbType!==f||d.batchPeriod!==p||recBatchHoli(d))return;if(s[d.media])s[d.media][d.batchDayOfWeek]++;});var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=Math.round(s[m][d]/gc[d]);});});return r;}
+function _raw_getDOWAverageByType(){var gc=getGlobalDOWDateCounts(),s={};DB_TYPES.forEach(function(dt){s[dt]={};WEEK_ORDER.forEach(function(d){s[dt][d]=0;});});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&!recInflowHoli(d))s[d.dbType][d.dayOfWeek]++;});var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){r[dt][d]=Math.round(s[dt][d]/gc[d]);});});return r;}
+function _raw_getMediaDOWTable(f){var gc=getGlobalDOWDateCounts(),s={};MEDIA_TYPES.forEach(function(m){s[m]={};WEEK_ORDER.forEach(function(d){s[m][d]=0;});});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.dbType!==f||recInflowHoli(d))return;if(s[d.media])s[d.media][d.dayOfWeek]++;});var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=Math.round(s[m][d]/gc[d]);});});return r;}
+function _raw_getBatchDOWDateCounts(p){var c={};WEEK_ORDER.forEach(function(d){c[d]={};});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.batchPeriod!==p||recBatchHoli(d))return;c[d.batchDayOfWeek][d.batchDate]=true;});var r={};WEEK_ORDER.forEach(function(d){r[d]=Math.max(Object.keys(c[d]).length,1);});return r;}
+function _raw_getMediaDOWTableByPeriod(f,p){var gc=getBatchDOWDateCounts(p),s={};MEDIA_TYPES.forEach(function(m){s[m]={};WEEK_ORDER.forEach(function(d){s[m][d]=0;});});allData.forEach(function(d){if(d.isTimeboard||d.isSpecial||d.dbType!==f||d.batchPeriod!==p||recBatchHoli(d))return;if(s[d.media])s[d.media][d.batchDayOfWeek]++;});var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=Math.round(s[m][d]/gc[d]);});});return r;}
 function getDBTypeBreakdown(){var m={};DB_TYPES.forEach(function(t){m[t]=0;});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial)m[d.dbType]++;});return m;}
 function getMediaGroupBreakdown(){var m={};MEDIA_TYPES.forEach(function(t){m[t]=0;});allData.forEach(function(d){if(!d.isTimeboard&&!d.isSpecial&&m.hasOwnProperty(d.media))m[d.media]++;});return m;}
 // 동일 날짜+시간에 2개 이상 패키지가 동시 집행된 경우 식별 (평균 계산에서 제외)
@@ -1379,20 +1439,22 @@ var KR_HOLIDAYS=[
     // 2027 — 설날 2/5~7(일요일 겹침 → 대체 2/8), 추석 9/14~16(주말 안 겹침 → 대체 없음), 대체공휴일(2/8·8/16·10/4·10/11·12/27), 제헌절(7/17·재지정) 포함
     '2027-01-01','2027-02-05','2027-02-06','2027-02-07','2027-02-08','2027-03-01','2027-05-01','2027-05-05','2027-05-13','2027-06-06','2027-07-17','2027-08-15','2027-08-16','2027-09-14','2027-09-15','2027-09-16','2027-10-03','2027-10-04','2027-10-09','2027-10-11','2027-12-25','2027-12-27'
 ];
+// 공휴일 조회용 Set (레코드 15만 건 순회 중 배열 indexOf 선형 탐색을 피하기 위함)
+var KR_HOLI_SET=new Set(KR_HOLIDAYS);
 // 레코드가 평일(월~금) 공휴일에 속하는지 — 유입일 / 배치일 기준
-function recInflowHoli(d){return d.dayOfWeek>=1&&d.dayOfWeek<=5&&KR_HOLIDAYS.indexOf(d.dateStr)>=0;}
-function recBatchHoli(d){return d.batchDayOfWeek>=1&&d.batchDayOfWeek<=5&&KR_HOLIDAYS.indexOf(d.batchDate)>=0;}
+function recInflowHoli(d){return d.dayOfWeek>=1&&d.dayOfWeek<=5&&KR_HOLI_SET.has(d.dateStr);}
+function recBatchHoli(d){return d.batchDayOfWeek>=1&&d.batchDayOfWeek<=5&&KR_HOLI_SET.has(d.batchDate);}
 
 function isWeekendOrHoliday(dateStr){
     var d=new Date(dateStr+'T00:00:00');
     var dow=d.getDay();
     if(dow===0||dow===6)return true;
-    return KR_HOLIDAYS.indexOf(dateStr)>=0;
+    return KR_HOLI_SET.has(dateStr);
 }
 // 차주 예상: WEEK_ORDER 기준 i번째(토~금) 날짜가 한국 공휴일인지
 function isPredHoliday(i){
     var wd=getNextWeekDates();
-    return !!(wd&&wd[i]&&KR_HOLIDAYS.indexOf(wd[i])>=0);
+    return !!(wd&&wd[i]&&KR_HOLI_SET.has(wd[i]));
 }
 // 평일(월~금, WEEK_ORDER 기준 i=2~6) 공휴일인지. 토/일 공휴일은 주말 로직을 그대로 따른다.
 function isWeekdayHoliday(i){
@@ -1562,7 +1624,24 @@ function getWeeklySeriesForDOW(fn,dow,ub){var wm={};allData.forEach(function(d){
 // allData를 한 번만 순회하여 [dbType][media?][period?][dow][weekStart]=count 맵 생성.
 // smart prediction 함수들이 매번 allData.forEach 도는 대신 캐시 lookup으로 처리.
 var aggCache=null,aggDirty=true;
-function invalidateAgg(){aggDirty=true;}
+// allData가 바뀔 때만 다시 계산하는 결과 캐시 (allData 변경 지점은 모두 invalidateAgg()를 호출)
+// 반환값은 복사본을 돌려줘 호출부에서 수정해도 캐시가 오염되지 않게 한다.
+var _aggMemo={};
+function invalidateAgg(){aggDirty=true;_aggMemo={};}
+function _aggClone(o){if(o===null||typeof o!=='object')return o;if(Array.isArray(o))return o.map(_aggClone);if(o instanceof Date)return new Date(o.getTime());var r={};for(var k in o)if(Object.prototype.hasOwnProperty.call(o,k))r[k]=_aggClone(o[k]);return r;}
+function _aggMemoGet(key,fn,noClone){if(!Object.prototype.hasOwnProperty.call(_aggMemo,key))_aggMemo[key]=fn();return noClone?_aggMemo[key]:_aggClone(_aggMemo[key]);}
+function getGlobalDOWDateCounts(){return _aggMemoGet('gdc',_raw_getGlobalDOWDateCounts);}
+function getBatchDOWDateCounts(p){return _aggMemoGet('bdc|'+p,function(){return _raw_getBatchDOWDateCounts(p);});}
+function getDOWAverageByType(){return _aggMemoGet('dowAvg',_raw_getDOWAverageByType);}
+function getMediaDOWTable(f){return _aggMemoGet('mdt|'+f,function(){return _raw_getMediaDOWTable(f);});}
+function getMediaDOWTableByPeriod(f,p){return _aggMemoGet('mdtp|'+f+'|'+p,function(){return _raw_getMediaDOWTableByPeriod(f,p);});}
+// smart 표는 분배일 토글(workingDayToggle)에 따라 값이 달라지므로 키에 포함
+function getSmartMediaDOWTable(f){return _aggMemoGet('smdt|'+f+'|'+workingDayToggle.join(','),function(){return _raw_getSmartMediaDOWTable(f);});}
+function getSmartMediaDOWTableByPeriod(f,p){return _aggMemoGet('smdtp|'+f+'|'+p+'|'+workingDayToggle.join(','),function(){return _raw_getSmartMediaDOWTableByPeriod(f,p);});}
+// 분석탭 주차별 표 — 호출부(buildDailyComparisonForPeriod 등)는 읽기 전용이라 복사 생략 (객체가 큼)
+function getDowLangMediaByWeek(){return _aggMemoGet('dlmw',_raw_getDowLangMediaByWeek,true);}
+// 마지막 유입일 (getNextWeekRange가 업데이트 1회에 십여 번 호출됨)
+function getLastInflowDateStr(){return _aggMemoGet('lastDs',function(){var mx='';for(var i=0;i<allData.length;i++){var s=allData[i].dateStr;if(s&&s>mx&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s))mx=s;}return mx;});}
 function ensureAgg(){
     if(!aggDirty&&aggCache)return;
     var byDt={},byDtMedia={},byDtMediaPeriod={};
@@ -1598,8 +1677,8 @@ function ensureAgg(){
 function _aggSeries(b){if(!b)return [];return Object.keys(b).sort().map(function(w){return b[w];});}
 function getSmartDOWAverageByType(){ensureAgg();var r={};DB_TYPES.forEach(function(dt){r[dt]={};WEEK_ORDER.forEach(function(d){var b=aggCache.byDt[dt]&&aggCache.byDt[dt][d];r[dt][d]=smartPredict(_aggSeries(b));});});return r;}
 // 'H1'~'H5' = 평일 공휴일 컬럼(요일별) = 그 요일 평일 예측의 50%.
-function getSmartMediaDOWTable(f){ensureAgg();var plain=getMediaDOWTable(f);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMedia[f]&&aggCache.byDtMedia[f][m]&&aggCache.byDtMedia[f][m][d];r[m][d]=smartPredict(_aggSeries(b));});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=r[m][d]*0.5;});});return r;}
-function getSmartMediaDOWTableByPeriod(f,p){ensureAgg();var plain=getMediaDOWTableByPeriod(f,p);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMediaPeriod[f]&&aggCache.byDtMediaPeriod[f][m]&&aggCache.byDtMediaPeriod[f][m][p]&&aggCache.byDtMediaPeriod[f][m][p][d];r[m][d]=smartPredict(_aggSeries(b));});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=r[m][d]*0.5;});});return r;}
+function _raw_getSmartMediaDOWTable(f){ensureAgg();var plain=getMediaDOWTable(f);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMedia[f]&&aggCache.byDtMedia[f][m]&&aggCache.byDtMedia[f][m][d];r[m][d]=smartPredict(_aggSeries(b));});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=r[m][d]*0.5;});});return r;}
+function _raw_getSmartMediaDOWTableByPeriod(f,p){ensureAgg();var plain=getMediaDOWTableByPeriod(f,p);var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d,i){if(!workingDayToggle[i]){r[m][d]=plain[m][d];return;}var b=aggCache.byDtMediaPeriod[f]&&aggCache.byDtMediaPeriod[f][m]&&aggCache.byDtMediaPeriod[f][m][p]&&aggCache.byDtMediaPeriod[f][m][p][d];r[m][d]=smartPredict(_aggSeries(b));});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=r[m][d]*0.5;});});return r;}
 function getSmartMediaDOWTableForGroup(dts){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTable(dt);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]+=t[m]['H'+d];});});});return r;}
 function getSmartMediaDOWTableByPeriodForGroup(dts,p){var r={};MEDIA_TYPES.forEach(function(m){r[m]={};WEEK_ORDER.forEach(function(d){r[m][d]=0;});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]=0;});});dts.forEach(function(dt){var t=getSmartMediaDOWTableByPeriod(dt,p);MEDIA_TYPES.forEach(function(m){WEEK_ORDER.forEach(function(d){r[m][d]+=t[m][d];});[1,2,3,4,5].forEach(function(d){r[m]['H'+d]+=t[m]['H'+d];});});});return r;}
 // dts가 단일 문자열/길이 1 배열이면 단일 dbType 함수, 아니면 그룹 합산 함수로 자동 분기
@@ -1938,7 +2017,7 @@ function classifyMediaForAnalysis(mc){
 }
 // 주차×요일×언어×매체×시간대(전체/오전/오후) 실제 유입 집계
 // 주차 키 = 유입일(J열)의 토요일, 시간대 = batchPeriod
-function getDowLangMediaByWeek(){
+function _raw_getDowLangMediaByWeek(){
     var data={'전체':{},'오전':{},'오후':{}};
     var allLangKeys=ANALYSIS_LANGS.concat(ANALYSIS_LANGS_SUB);
     function ensureCell(bucket,wk,dow){
@@ -3430,8 +3509,37 @@ async function gzipCompress(str){
     var stream=new Blob([enc.encode(str)]).stream().pipeThrough(new CompressionStream('gzip'));
     var buf=await new Response(stream).arrayBuffer();
     var bytes=new Uint8Array(buf);
-    var binary='';for(var i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
-    return btoa(binary);
+    // 바이트 단위 문자열 연결 대신 32KB 단위로 변환 (수 MB에서 훨씬 빠름)
+    var parts=[];for(var i=0;i<bytes.length;i+=0x8000)parts.push(String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000)));
+    return btoa(parts.join(''));
+}
+// 원격 data.json의 동기화 시각만 확인 — 파일 앞 200바이트만 받는다 (GitHub Pages Range 요청 지원).
+// data.json은 {"ts":"<lastSyncTime>","z":"..."} 형식으로 저장되며, ts가 없는 구버전 파일이면 null을 돌려준다
+// (호출부는 null이면 기존처럼 전체를 받아 확인).
+async function fetchRemoteSyncTs(){
+    try{
+        var r=await fetch('data.json?t='+Date.now(),{headers:{'Range':'bytes=0-199'},cache:'no-store'});
+        if(!r.ok)return null;
+        var txt='';
+        if(r.body&&r.body.getReader){
+            var rd=r.body.getReader(),dec=new TextDecoder();
+            while(txt.length<200){var c=await rd.read();if(c.done)break;txt+=dec.decode(c.value,{stream:true});}
+            try{rd.cancel();}catch(e){}
+        }else txt=(await r.text()).slice(0,200);
+        var m=txt.match(/^\s*\{\s*"ts"\s*:\s*"([^"]*)"/);
+        return m?m[1]:null;
+    }catch(e){return null;}
+}
+// 원격 동기화 시각: 빠른 확인이 안 되면(구버전 파일) 전체를 받아 확인
+async function getRemoteSyncTs(){
+    var ts=await fetchRemoteSyncTs();
+    if(ts!==null)return ts;
+    var resp=await fetch('data.json?t='+Date.now());
+    if(!resp.ok)return null;
+    var raw=await resp.json();
+    if(raw.ts)return raw.ts;
+    var pl=raw.z?JSON.parse(await gzipDecompress(raw.z)):raw;
+    return pl.lastSyncTime||'';
 }
 async function gzipDecompress(b64){
     var binary=atob(b64);
@@ -3454,11 +3562,8 @@ async function saveToGitHub(auto){
     if(btn){btn.textContent='확인 중...';btn.disabled=true;}
     // Pull-before-push: 원격이 더 최신이면 충돌 가능
     try{
-        var checkResp=await fetch('data.json?t='+Date.now());
-        if(checkResp.ok){
-            var checkRaw=await checkResp.json();
-            var checkPl=checkRaw.z?JSON.parse(await gzipDecompress(checkRaw.z)):checkRaw;
-            var remoteTs=checkPl.lastSyncTime||'';
+        var remoteTs=await getRemoteSyncTs();
+        if(remoteTs!==null){
             var localTs=localStorage.getItem('lastSyncTime')||'';
             if(remoteTs&&localTs&&remoteTs>localTs){
                 if(auto){
@@ -3487,9 +3592,10 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
-        var wrapper=JSON.stringify({z:compressed});
+        // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
+        var wrapper=JSON.stringify({ts:syncTs,z:compressed});
         var content=btoa(unescape(encodeURIComponent(wrapper)));
         async function getSha(){
             try{
@@ -3560,11 +3666,9 @@ setInterval(async function(){
         saveToGitHub(true);
     }else{
         try{
-            var resp=await fetch('data.json?t='+Date.now());
-            if(!resp.ok)return;
-            var raw=await resp.json();
-            var pl=raw.z?JSON.parse(await gzipDecompress(raw.z)):raw;
-            var remoteTs=pl.lastSyncTime||'';
+            // 5분마다: 시각만 확인(200바이트) → 원격이 더 새로울 때만 전체 다운로드
+            var remoteTs=await getRemoteSyncTs();
+            if(remoteTs===null)return;
             var localTs=localStorage.getItem('lastSyncTime')||'';
             if(remoteTs&&localTs&&remoteTs>localTs){
                 await loadFromJSON();
@@ -3576,6 +3680,11 @@ setInterval(async function(){
 
 async function loadFromJSON(){
     try{
+        // 로컬 데이터가 원격과 같거나 최신이면 3.2MB 다운로드·압축해제 자체를 생략 (아래 전체 비교와 같은 조건)
+        if(allData.length){
+            var _lts=localStorage.getItem('lastSyncTime')||'';
+            if(_lts){var _rts=await fetchRemoteSyncTs();if(_rts&&_lts>=_rts)return false;}
+        }
         var resp=await fetch('data.json?t='+Date.now());
         if(!resp.ok)return false;
         var raw=await resp.json();
@@ -3599,6 +3708,9 @@ async function loadFromJSON(){
             if(payload.actualInflowData)actualInflowData=payload.actualInflowData;
             if(payload.actualInflowFiles)actualInflowFiles=payload.actualInflowFiles;
             if(payload.manualAdjust)manualAdjust=Object.assign({'영어':{level:0,offset:0},'일본어':{level:0,offset:0},'중국어':{level:0,offset:0},'스페인어':{level:0,offset:0},'프랑스어':{level:0,offset:0},'톡이즈':{level:0,offset:0}},payload.manualAdjust);
+            if(payload.wsManagers)wsManagers=payload.wsManagers;
+            if(payload.wsOverrides)wsOverrides=payload.wsOverrides;
+            if(payload.wsCenters)wsCenters=payload.wsCenters;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3612,6 +3724,9 @@ async function loadFromJSON(){
                     await idbPut('actualInflowData',actualInflowData);
                     await idbPut('actualInflowFiles',actualInflowFiles);
                     await idbPut('manualAdjust',manualAdjust);
+                    await idbPut('wsManagers',wsManagers);
+                    await idbPut('wsOverrides',wsOverrides);
+                    if(wsCenters)await idbPut('wsCenters',wsCenters);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
@@ -3657,7 +3772,8 @@ function setInitProgress(pct){
         if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addSchedule();}});
     });
     await setInitProgress(100);
-    updateAll();updateModalUI();updateScheduleUI();updatePrediction();loadLastSyncTime();
+    // 데이터가 있으면 updateAll()이 setTimeout 안에서 updatePrediction()(→updateScheduleUI)을 이미 호출하므로 중복 실행하지 않음
+    updateAll();updateModalUI();if(!allData.length){updateScheduleUI();updatePrediction();}loadLastSyncTime();
 })();
 
 // ======================== Floating Nav ========================
@@ -3697,6 +3813,522 @@ function updateFloatNav(){
     menu.innerHTML=h;
 }
 document.addEventListener('click',function(e){var nav=document.querySelector('.float-nav');if(nav&&!nav.contains(e.target))document.getElementById('floatMenu').classList.remove('open');});
+
+// ======================== 근무현황 (근태보고 → 종합현황 / 근무일정) ========================
+// 원본 '뇌새김 n월 근무현황파일_종합' 엑셀과 같은 행·열·색·서식을 하나의 셀 모델로 만들고,
+// 화면(HTML)과 엑셀 다운로드가 같은 모델을 쓴다.
+var WS_CENTERS_DEFAULT=['당산','강동','대전','유성'];
+var WS_FMT={n1:'_-* #,##0.0_-;\\-* #,##0.0_-;_-* "-"_-;_-@_-',n0:'_-* #,##0_-;\\-* #,##0_-;_-* "-"_-;_-@_-',d:'dd(aaa)'};
+var WS_C={hdr:'203864',gray:'AFABAB',hol:'DAE3F3',sat:'F8CBAD',wkS:'44546A',wkG:'7F7F7F',dcol:'333F50',green:'E2F0D9',yellow:'FFFF00',total:'8FAADC',half:'C5E0B4',halfAbs:'FFC000',blue:'00B0F0',red:'FF0000',purple:'C39BE1',white:'FFFFFF'};
+var WS_KIND_FILL={half:WS_C.half,halfAbs:WS_C.halfAbs,blue:WS_C.blue,yellow:WS_C.yellow,red:WS_C.red,purple:WS_C.purple};
+var WS_SUBS={'제2외국어':['e','N','b','h'],'영어':['E','N','H']};
+var WS_SUBS_BY_CENTER={'강동':['e','N','b']}; // 원본 양식의 숨김 하위행 수 그대로
+var WS_MGR_SLOTS=[{k:'sudo',i:0,a:'매니저',b:'수도권'},{k:'sudo',i:1},{k:'sudo',i:2},{k:'jung',i:0,b:'중부'},{k:'jung',i:1},{k:'head',i:0,a:'센터장'}];
+var WS_DOW=['일','월','화','수','목','금','토'];
+var WS_BLUE=['연차','휴가','경조','공가','장기공석'];
+var _wsLast=null,_wsPasteSegs=[];
+
+function wsEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function wsName(n){return String(n||'').replace(/^\s*\([^)]*\)\s*/,'').trim();}
+function wsGroupOf(p){
+    var d=String(p.department||'');
+    if(d.indexOf('톡이즈')>=0)return null;
+    if(d.indexOf('제2외국어')>=0)return'제2외국어';
+    if(d.indexOf('영어')>=0)return'영어';
+    var c=classifyStaffDB(p);return(c==='영어'||c==='제2외국어')?c:null;
+}
+// 근태보고 텍스트 → 근무일정 셀 값. 0.5는 반차(연두) / 반일 결근(주황)으로 구분
+function wsParseVal(raw){
+    if(raw===null||raw===undefined)return{v:'',k:''};
+    if(typeof raw==='number')return{v:raw,k:raw===0.5?'half':''};
+    var s=String(raw).trim();
+    if(!s||s==='-')return{v:'',k:''};
+    if(/^\d+(\.\d+)?$/.test(s)){var n=parseFloat(s);return{v:n,k:n===0.5?'half':''};}
+    if(/반차/.test(s))return{v:0.5,k:'half'};
+    if(/(오전|오후)\s*결근/.test(s))return{v:0.5,k:'halfAbs'};
+    if(/결근|퇴사/.test(s))return{v:s,k:'red'};
+    if(/대체\s*휴무/.test(s))return{v:s,k:'yellow'};
+    for(var i=0;i<WS_BLUE.length;i++)if(s.indexOf(WS_BLUE[i])>=0)return{v:s,k:'blue'};
+    if(/톡이즈/.test(s))return{v:s,k:'purple'};
+    if(/출근|지각/.test(s))return{v:1,k:''};
+    return{v:s,k:''};
+}
+function wsFileDate(){var f=(attendanceFiles&&attendanceFiles[0])||'';var m=f.match(/(\d{4})(\d{2})(\d{2})/);return m?m[1]+'-'+m[2]+'-'+m[3]:'';}
+function wsSerial(dt){return Math.round((Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate())-Date.UTC(1899,11,30))/86400000);}
+// 월~일 7일 × 6주 (원본과 동일: 1주차는 그 달 1일이 속한 주의 월요일부터)
+function wsMonth(){
+    if(!attendanceMonth||!attendanceData.length)return null;
+    var y=+attendanceMonth.slice(0,4),m=+attendanceMonth.slice(5,7);
+    var first=new Date(y,m-1,1),off=(first.getDay()+6)%7,weeks=[];
+    for(var w=0;w<6;w++){
+        var days=[];
+        for(var k=0;k<7;k++){
+            var dt=new Date(y,m-1,1-off+w*7+k),ds=formatDate(dt),dow=dt.getDay(),hol=KR_HOLI_SET.has(ds);
+            days.push({ds:ds,dom:dt.getDate(),mon:dt.getMonth()+1,dow:dow,inM:dt.getMonth()===m-1,hol:hol,
+                type:dow===6?'sat':dow===0?'sun':(hol?'hol':'wk'),serial:wsSerial(dt)});
+        }
+        weeks.push({days:days,used:days.some(function(d){return d.inM;})});
+    }
+    return{y:y,m:m,weeks:weeks,fileDate:wsFileDate()};
+}
+function wsEligibleCenters(){
+    var seen=[];
+    attendanceData.forEach(function(p){if(!wsGroupOf(p))return;var c=String(p.center||'').trim();if(c&&seen.indexOf(c)<0)seen.push(c);});
+    return seen;
+}
+function wsActiveCenters(){
+    var all=wsEligibleCenters(),sel=(wsCenters&&wsCenters.length)?wsCenters:WS_CENTERS_DEFAULT;
+    return sel.filter(function(c){return all.indexOf(c)>=0;});
+}
+function wsBuild(){
+    var M=wsMonth();if(!M)return null;
+    var centers=wsActiveCenters(),people=[],days=[];
+    M.weeks.forEach(function(w){w.days.forEach(function(d){days.push(d);});});
+    centers.forEach(function(c){
+        attendanceData.forEach(function(p){
+            if(String(p.center||'').trim()!==c)return;
+            var g=wsGroupOf(p);if(!g)return;
+            people.push({raw:p,name:wsName(p.name),center:c,group:g});
+        });
+    });
+    people.forEach(function(pp){
+        pp.cells={};
+        days.forEach(function(d){
+            if(!d.inM){pp.cells[d.ds]={v:'',k:''};return;}
+            var c=wsParseVal(pp.raw.daily?pp.raw.daily[d.dom]:'');
+            var ov=wsOverrides[d.ds];
+            if(ov&&Object.prototype.hasOwnProperty.call(ov,pp.name)){c=ov[pp.name]===1?{v:1,k:''}:{v:'',k:''};c.ov=true;}
+            pp.cells[d.ds]=c;
+        });
+        var t={wk:0,sat:0,hol:0};
+        days.forEach(function(d){
+            if(!d.inM)return;var v=pp.cells[d.ds].v;if(typeof v!=='number')return;
+            if(d.type==='wk')t.wk+=v;else if(d.type==='sat')t.sat+=v;else t.hol+=v; // 평일 공휴일은 일요(휴일)로 집계
+        });
+        pp.tot=t;
+    });
+    var workCnt={};
+    days.forEach(function(d){var n=0;people.forEach(function(pp){var v=pp.cells[d.ds].v;if(typeof v==='number')n+=v;});workCnt[d.ds]=n;});
+    // 열 색: 평일 흰색, 평일 공휴일 연파랑, 일요일 회색, 토요일 살구색(공휴일이거나 지난 토요일인데 근무자 0명이면 회색)
+    days.forEach(function(d){
+        d.fill=d.type==='wk'?'':d.type==='hol'?WS_C.hol:d.type==='sun'?WS_C.gray:
+            ((d.hol||(d.inM&&M.fileDate&&d.ds<=M.fileDate&&!workCnt[d.ds]))?WS_C.gray:WS_C.sat);
+    });
+    return{M:M,people:people,centers:centers,days:days,workCnt:workCnt};
+}
+function wsSumRow(B,valFn){
+    var out={days:{},weeks:[],wk:0,sat:0,hol:0};
+    B.M.weeks.forEach(function(w){
+        var s=0;
+        w.days.forEach(function(d){
+            var v=d.inM?(valFn(d)||0):0;out.days[d.ds]=v;s+=v;
+            if(!d.inM)return;
+            if(d.type==='wk')out.wk+=v;else if(d.type==='sat')out.sat+=v;else out.hol+=v;
+        });
+        out.weeks.push(s);
+    });
+    return out;
+}
+function wsCountOne(list,ds){var n=0;list.forEach(function(pp){if(pp.cells[ds].v===1)n++;});return n;}
+function wsSumNum(list,ds){var n=0;list.forEach(function(pp){var v=pp.cells[ds].v;if(typeof v==='number')n+=v;});return n;}
+function wsMgrName(ds,slot){var e=wsManagers[ds];if(!e||!e[slot.k])return'';return e[slot.k][slot.i]||'';}
+
+// ---------- 셀 모델 ----------
+// spec: {v, fill, bold, color, sz, fmt:'n1'|'n0'|'d', h:'center'|'', bd:'all'|'hdrL'|'hdrM'|'hdrR'|'none', wrap, disp, attrs}
+function wsHdr(v,pos,extra){return Object.assign({v:v,fill:WS_C.hdr,bold:true,color:WS_C.white,bd:pos||'hdrM',wrap:true},extra||{});}
+function wsModelSchedule(B){
+    var cols=[{w:5.75},{w:10},{w:8.5},{w:11.125}],rows=[];
+    B.M.weeks.forEach(function(w,wi){for(var k=0;k<7;k++)cols.push({w:7,hidden:!w.used});cols.push({w:wi===0?6.375:6.625,hidden:!w.used});});
+    cols.push({w:8.5},{w:8.5},{w:8.5},{w:11.5});
+    var nC=cols.length;
+    // 1행: 범례
+    var r1=[{v:0.5,fill:WS_C.half,fmt:'n1'},{v:'연차',fill:WS_C.blue},{v:'대체휴무',fill:WS_C.yellow},{v:'결근',fill:WS_C.red}];
+    while(r1.length<nC)r1.push({v:'',bd:'none'});
+    rows.push({cells:r1,ht:12});
+    // 2행: 헤더
+    var h=[wsHdr('센터','hdrL'),wsHdr('성명'),wsHdr('그룹'),wsHdr('휴일근무 횟수','hdrR')];
+    B.M.weeks.forEach(function(w,wi){
+        w.days.forEach(function(d){h.push(d.inM?wsHdr(d.serial,'hdrM',{fmt:'d',disp:String(d.dom).padStart(2,'0')+'('+WS_DOW[d.dow]+')'}):wsHdr('','hdrM'));});
+        h.push(wsHdr((wi+1)+'주차','hdrR'));
+    });
+    h.push(wsHdr('평일','hdrL'),wsHdr('토요'),wsHdr('일요'),wsHdr('총근무일','hdrR'));
+    rows.push({cells:h,ht:12,hdr:true});
+    // 3행~: 상담원
+    B.people.forEach(function(pp){
+        var c=[{v:pp.center,bold:true,h:'center'},{v:pp.name,bold:true,fill:WS_C.white},{v:pp.group,bold:true},
+            {v:pp.tot.sat+pp.tot.hol,fill:WS_C.dcol,bold:true,color:WS_C.white,fmt:'n1'}];
+        B.M.weeks.forEach(function(w){
+            var s=0;
+            w.days.forEach(function(d){
+                var cell=pp.cells[d.ds],fill=WS_KIND_FILL[cell.k]||d.fill;
+                if(typeof cell.v==='number')s+=cell.v;
+                var sp={v:cell.v,fill:fill,fmt:'n1'};
+                if(d.inM&&d.type!=='wk')sp.attrs={ds:d.ds,nm:pp.name};
+                if(cell.ov)sp.ov=true;
+                c.push(sp);
+            });
+            c.push({v:s,fill:WS_C.wkG,bold:true,color:WS_C.white,fmt:'n1'});
+        });
+        c.push({v:pp.tot.wk,bold:true,fmt:'n1'},{v:pp.tot.sat,bold:true,fmt:'n1'},{v:pp.tot.hol,bold:true,fmt:'n1'},{v:pp.tot.wk+pp.tot.sat+pp.tot.hol,bold:true,fmt:'n1'});
+        rows.push({cells:c,ht:12});
+    });
+    return{name:'근무일정',cols:cols,rows:rows,autofilter:'A2:'+XLSX.utils.encode_col(nC-1)+(rows.length),stickyCols:4};
+}
+function wsModelSummary(B){
+    var cols=[{w:8.375}],rows=[];
+    B.M.weeks.forEach(function(w,wi){for(var k=0;k<7;k++)cols.push({w:wi===0?6:5.75,hidden:!w.used});cols.push({w:5.375,hidden:!w.used});});
+    cols.push({w:7.5},{w:7.5},{w:7.5},{w:7.5});
+    var nC=cols.length;
+    function blank(n){var a=[];for(var i=0;i<n;i++)a.push({v:'',bd:'none'});return a;}
+    // kind: grp(일반) | tot(계, 파랑) | blk(센터 블록 계, 노랑)
+    function countRow(label,S,kind,o){
+        o=o||{};
+        var fillAll=kind==='tot'?WS_C.total:kind==='blk'?WS_C.yellow:'';
+        var c=[{v:label,bold:true,h:'center',fill:kind==='tot'?WS_C.total:''}];
+        B.M.weeks.forEach(function(w,wi){
+            w.days.forEach(function(d){c.push({v:S.days[d.ds],bold:true,fmt:'n0',fill:fillAll||d.fill});});
+            c.push(kind==='blk'?{v:S.weeks[wi],bold:true,fmt:'n0',fill:WS_C.yellow,color:WS_C.red}:{v:S.weeks[wi],bold:true,fmt:'n0',fill:WS_C.wkS,color:WS_C.white});
+        });
+        var sf=fillAll||WS_C.green;
+        c.push({v:S.wk,bold:true,fmt:'n0',fill:sf,h:''},{v:S.sat,bold:true,fmt:'n0',fill:sf,h:''},{v:S.hol,bold:true,fmt:'n0',fill:sf,h:''},{v:S.wk+S.sat+S.hol,bold:true,fmt:'n0',fill:fillAll||WS_C.yellow,h:''});
+        return{cells:c,ht:o.ht||15,hidden:!!o.hidden};
+    }
+    var zero=function(){return 0;};
+    rows.push({cells:blank(nC)});
+    var h=[wsHdr('그룹별','hdrL')];
+    B.M.weeks.forEach(function(w,wi){
+        w.days.forEach(function(d){h.push(d.inM?wsHdr(d.serial,'hdrM',{fmt:'d',disp:String(d.dom).padStart(2,'0')+'('+WS_DOW[d.dow]+')'}):wsHdr('','hdrM'));});
+        h.push(wsHdr((wi+1)+'주차','hdrR'));
+    });
+    h.push(wsHdr('평일','hdrL'),wsHdr('토요'),wsHdr('휴일'),wsHdr('총근무','hdrR'));
+    rows.push({cells:h,ht:17.25,hdr:true});
+    // 그룹별 (온전한 1.0 근무만 카운트 — 원본 COUNTIFS "1")
+    function grpList(g){return B.people.filter(function(pp){return pp.group===g;});}
+    var eng=grpList('영어'),sec=grpList('제2외국어');
+    rows.push(countRow('영어',wsSumRow(B,function(d){return wsCountOne(eng,d.ds);}),'grp'));
+    rows.push(countRow('E',wsSumRow(B,zero),'grp',{hidden:true}));
+    rows.push(countRow('N',wsSumRow(B,zero),'grp',{hidden:true}));
+    rows.push(countRow('제2외국어',wsSumRow(B,function(d){return wsCountOne(sec,d.ds);}),'grp'));
+    rows.push({cells:blank(nC),ht:5.1});
+    // 센터별 (반차 0.5 포함 합계 — 원본 SUMIF)
+    var centerS=B.centers.map(function(c){var l=B.people.filter(function(pp){return pp.center===c;});return wsSumRow(B,function(d){return wsSumNum(l,d.ds);});});
+    centerS.forEach(function(S,i){rows.push(countRow(B.centers[i],S,'grp'));});
+    rows.push(countRow('계',wsSumRow(B,function(d){var n=0;centerS.forEach(function(S){n+=S.days[d.ds];});return n;}),'tot'));
+    rows.push({cells:blank(nC),ht:5.1});
+    // 휴일 담당 매니저 / 센터장
+    var mon1In=B.M.weeks[0].days[0].inM;
+    WS_MGR_SLOTS.forEach(function(slot){
+        var aLabel=slot.a||'';if(slot.b&&mon1In)aLabel=(aLabel?aLabel+' ':'')+slot.b;
+        var c=[{v:aLabel,bold:true,h:'center'}];
+        B.M.weeks.forEach(function(w,wi){
+            w.days.forEach(function(d,di){
+                if(wi===0&&di===0&&slot.b&&!mon1In){c.push({v:slot.b,bold:true});return;}
+                if(d.inM&&d.type!=='wk')c.push({v:wsMgrName(d.ds,slot),bold:true,fill:d.fill});
+                else c.push({v:'',bold:true,fill:d.type==='wk'?'':d.fill});
+            });
+            c.push({v:'',bold:true});
+        });
+        c.push({v:'',bold:true},{v:'',bold:true},{v:'',bold:true},{v:'',bold:true});
+        rows.push({cells:c,ht:12});
+    });
+    rows.push({cells:blank(nC),ht:12});
+    // 센터 블록
+    B.centers.forEach(function(cn){
+        var l=B.people.filter(function(pp){return pp.center===cn;});
+        var cntE=l.filter(function(pp){return pp.group==='영어';}).length;
+        var prim=cntE>=l.length-cntE?'영어':'제2외국어';
+        var t=blank(nC);t[0]={v:cn,bold:true,sz:11,bd:'none',h:''};
+        rows.push({cells:t,ht:12});
+        var gl=l.filter(function(pp){return pp.group===prim;}),other=l.filter(function(pp){return pp.group!==prim;});
+        var S1=wsSumRow(B,function(d){return wsCountOne(gl,d.ds);});
+        rows.push(countRow(prim,S1,'grp',{ht:12}));
+        var parts=[S1];
+        if(other.length){var S2=wsSumRow(B,function(d){return wsCountOne(other,d.ds);});parts.push(S2);rows.push(countRow(prim==='영어'?'제2외국어':'영어',S2,'grp',{ht:12}));}
+        (WS_SUBS_BY_CENTER[cn]||WS_SUBS[prim]).forEach(function(sg){rows.push(countRow(sg,wsSumRow(B,zero),'grp',{ht:12,hidden:true}));});
+        var blk=countRow('계',wsSumRow(B,function(d){var n=0;parts.forEach(function(S){n+=S.days[d.ds];});return n;}),'blk',{ht:12});
+        blk.cells[0].fill='';
+        rows.push(blk);
+        rows.push({cells:blank(nC),ht:12});
+    });
+    return{name:'종합현황',cols:cols,rows:rows,stickyCols:1};
+}
+
+// ---------- HTML 렌더 ----------
+function wsDisp(sp){
+    if(sp.disp!==undefined)return sp.disp;
+    var v=sp.v;
+    if(v===''||v===null||v===undefined)return'';
+    if(typeof v==='number'){
+        if(sp.fmt==='n1')return v===0?'-':(Math.round(v*10)/10).toFixed(1);
+        if(sp.fmt==='n0')return v===0?'-':Math.round(v).toLocaleString();
+        return String(v);
+    }
+    return v;
+}
+function wsCellCss(sp){
+    var s='';
+    if(sp.fill)s+='background:#'+sp.fill+';';
+    if(sp.bold)s+='font-weight:700;';
+    if(sp.color)s+='color:#'+sp.color+';';
+    if(sp.sz&&sp.sz!==9)s+='font-size:'+Math.round(sp.sz*1.333)+'px;';
+    var h=sp.h===undefined?'center':sp.h;
+    s+='text-align:'+(h||(typeof sp.v==='number'?'right':'left'))+';';
+    if(sp.wrap)s+='white-space:normal;';
+    if(sp.bd==='hdrL')s+='border-left:1px solid #000;border-right:1px dotted #000;border-bottom:none;';
+    else if(sp.bd==='hdrM')s+='border-left:1px dotted #000;border-right:1px dotted #000;border-bottom:none;';
+    else if(sp.bd==='hdrR')s+='border-left:1px dotted #000;border-right:1px solid #000;border-bottom:none;';
+    return s;
+}
+function wsModelHTML(model){
+    var vis=[];model.cols.forEach(function(c,i){if(!c.hidden)vis.push(i);});
+    var px=model.cols.map(function(c){return Math.round(c.w*8+5);});
+    var left={},acc=0;for(var i=0;i<(model.stickyCols||0);i++){left[i]=acc;acc+=px[i];}
+    var tw=0;vis.forEach(function(i){tw+=px[i];});
+    var h='<table class="ws-x" style="width:'+tw+'px;min-width:'+tw+'px"><colgroup>';
+    vis.forEach(function(i){h+='<col style="width:'+px[i]+'px">';});
+    h+='</colgroup>';
+    model.rows.forEach(function(r){
+        if(r.hidden)return;
+        h+='<tr'+(r.hdr?' class="ws-hdr"':'')+' style="height:'+Math.round((r.ht||16.5)*1.333)+'px">';
+        vis.forEach(function(ci){
+            var sp=r.cells[ci]||{v:'',bd:'none'},cls=[];
+            if(sp.bd==='none')cls.push('ws-nb');
+            var st=wsCellCss(sp);
+            if(left[ci]!==undefined){cls.push('ws-st');st+='left:'+left[ci]+'px;';if(!sp.fill)st+='background:#fff;';}
+            var at='';
+            if(sp.attrs){cls.push('ws-tg');at=' data-ds="'+sp.attrs.ds+'" data-nm="'+wsEsc(sp.attrs.nm)+'" title="클릭: 출근(1.0) ↔ 해제"';}
+            if(sp.ov)cls.push('ws-ov');
+            h+='<td'+(cls.length?' class="'+cls.join(' ')+'"':'')+' style="'+st+'"'+at+'>'+wsEsc(wsDisp(sp))+'</td>';
+        });
+        h+='</tr>';
+    });
+    return h+'</table>';
+}
+function wsMgrHTML(B){
+    var off=B.days.filter(function(d){return d.inM&&d.type!=='wk';});
+    if(!off.length)return'<p class="ws-sub">이번 달에는 주말·공휴일이 없습니다.</p>';
+    var h='<div class="table-wrap" style="margin-bottom:0;"><table class="ws-mgr"><thead><tr><th>구분</th>';
+    off.forEach(function(d){var n=B.workCnt[d.ds]||0;h+='<th class="'+(n?'':'ws-off')+'" style="background:#'+(d.fill||'fff')+'">'+d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+')<br><span style="font-weight:500;font-size:0.68rem;">근무 '+(Math.round(n*10)/10)+'명</span></th>';});
+    h+='</tr></thead><tbody>';
+    var labels=['수도권 매니저 1','수도권 매니저 2','수도권 매니저 3','중부 매니저 1','중부 매니저 2','센터장'];
+    WS_MGR_SLOTS.forEach(function(slot,si){
+        h+='<tr><th style="text-align:left;">'+labels[si]+'</th>';
+        off.forEach(function(d){h+='<td><input type="text" value="'+wsEsc(wsMgrName(d.ds,slot))+'" data-ds="'+d.ds+'" data-k="'+slot.k+'" data-i="'+slot.i+'" onchange="wsSetMgr(this)"></td>';});
+        h+='</tr>';
+    });
+    return h+'</tbody></table></div>';
+}
+function wsRender(){
+    var root=document.getElementById('wsRoot');if(!root)return;
+    var tab=document.getElementById('tab-workstatus');
+    if(!tab||!tab.classList.contains('active')){_wsLast=null;return;}
+    var B=wsBuild();
+    if(!B){root.innerHTML='<div class="empty-state" style="display:block;"><div style="font-size:3rem;">&#128197;</div><p>우측 상단 [데이터 업로드] → <b>근태보고</b> 파일을 올리면 종합현황·근무일정이 표시됩니다</p></div>';return;}
+    var ovCnt=0;Object.keys(wsOverrides).forEach(function(ds){if(ds.slice(0,7)===attendanceMonth)ovCnt+=Object.keys(wsOverrides[ds]).length;});
+    var elig=wsEligibleCenters(),act=B.centers;
+    var h='<div class="ws-bar"><div class="ws-meta"><b>'+B.M.y+'년 '+B.M.m+'월</b> 근무현황 · 근태파일 <b>'+wsEsc(attendanceFiles[0]||'')+'</b> · 대상 '+B.people.length+'명'+(ovCnt?' · <span style="color:#7c3aed;">수동 변경 '+ovCnt+'건</span>':'')+'</div>';
+    h+='<div class="ws-btns"><button class="btn" style="background:#ede9fe;color:#5b21b6;" onclick="wsOpenPaste()">휴일근무 명단 붙여넣기</button>';
+    if(ovCnt)h+='<button class="btn" style="background:#eee;color:#333;" onclick="wsClearOverrides()">수동 변경 초기화</button>';
+    h+='<button class="btn btn-primary" onclick="wsDownloadExcel()">엑셀 다운로드</button></div></div>';
+    h+='<div class="ws-card"><div class="ws-centers"><b style="color:var(--navy);">대상 센터</b>';
+    elig.forEach(function(c){h+='<label><input type="checkbox" '+(act.indexOf(c)>=0?'checked':'')+' onchange="wsToggleCenter(\''+wsEsc(c)+'\',this.checked)"> '+wsEsc(c)+'</label>';});
+    h+='<span style="color:var(--slate-light);">근태파일의 영어·제2외국어 인원 중 선택한 센터만 집계합니다</span></div></div>';
+    h+='<div class="ws-card"><h3>휴일 담당 매니저 · 센터장</h3><p class="ws-sub">토·일·공휴일별로 입력하면 종합현황과 엑셀에 표시됩니다 (입력 즉시 저장)</p>'+wsMgrHTML(B)+'</div>';
+    h+='<div class="ws-card"><h3>종합현황</h3><p class="ws-sub">그룹별·센터 블록은 1.0 근무만, 센터별 합계는 반차(0.5) 포함 · 평일 공휴일은 휴일로 집계</p><div class="ws-scroll">'+wsModelHTML(wsModelSummary(B))+'</div></div>';
+    h+='<div class="ws-card"><h3>근무일정</h3><p class="ws-sub">토·일·공휴일 칸을 클릭하면 출근(1.0) ↔ 해제를 바꿀 수 있습니다 (보라 테두리 = 수동 변경)</p>';
+    h+='<div class="ws-legend"><span><i style="background:#'+WS_C.half+'"></i>반차 0.5</span><span><i style="background:#'+WS_C.halfAbs+'"></i>오전/오후 결근 0.5</span><span><i style="background:#'+WS_C.blue+'"></i>연차·휴가·경조·공가·장기공석</span><span><i style="background:#'+WS_C.yellow+'"></i>대체휴무</span><span><i style="background:#'+WS_C.red+'"></i>결근·퇴사</span><span><i style="background:#'+WS_C.sat+'"></i>토요일</span><span><i style="background:#'+WS_C.hol+'"></i>평일 공휴일</span><span><i style="background:#'+WS_C.gray+'"></i>휴무</span></div>';
+    h+='<div class="ws-scroll" id="wsSchedWrap">'+wsModelHTML(wsModelSchedule(B))+'</div></div>';
+    root.innerHTML=h;
+    _wsLast=B;
+}
+function wsPersist(key,val){markDirty();try{idbPut(key,val);}catch(e){}}
+function wsSetMgr(el){
+    var ds=el.dataset.ds,k=el.dataset.k,i=+el.dataset.i,v=el.value.trim();
+    if(!wsManagers[ds])wsManagers[ds]={sudo:['','',''],jung:['',''],head:['']};
+    if(!wsManagers[ds][k])wsManagers[ds][k]=[];
+    wsManagers[ds][k][i]=v;
+    wsPersist('wsManagers',wsManagers);
+    var y=window.scrollY;wsRender();window.scrollTo(0,y);
+}
+function wsToggleCenter(c,on){
+    var cur=wsActiveCenters().slice();
+    if(on&&cur.indexOf(c)<0)cur.push(c);
+    if(!on)cur=cur.filter(function(x){return x!==c;});
+    var order=WS_CENTERS_DEFAULT.concat(wsEligibleCenters());
+    cur.sort(function(a,b){return order.indexOf(a)-order.indexOf(b);});
+    wsCenters=cur;wsPersist('wsCenters',wsCenters);wsRender();
+}
+function wsSetOverride(ds,name,val){
+    if(!wsOverrides[ds])wsOverrides[ds]={};
+    wsOverrides[ds][name]=val;
+}
+function wsClearOverrides(){
+    if(!confirm(attendanceMonth+' 수동 변경(붙여넣기·클릭)을 모두 지우고 근태파일 값으로 되돌릴까요?'))return;
+    Object.keys(wsOverrides).forEach(function(ds){if(ds.slice(0,7)===attendanceMonth)delete wsOverrides[ds];});
+    wsPersist('wsOverrides',wsOverrides);wsRender();
+}
+document.addEventListener('click',function(e){
+    var td=e.target.closest&&e.target.closest('#wsSchedWrap td.ws-tg');if(!td||!_wsLast)return;
+    var ds=td.dataset.ds,nm=td.dataset.nm;
+    var pp=_wsLast.people.find(function(p){return p.name===nm;});if(!pp)return;
+    var cur=pp.cells[ds];
+    wsSetOverride(ds,nm,cur.v===1?'':1);
+    wsPersist('wsOverrides',wsOverrides);
+    var wrap=document.getElementById('wsSchedWrap'),sx=wrap?wrap.scrollLeft:0,sy=wrap?wrap.scrollTop:0,y=window.scrollY;
+    wsRender();
+    wrap=document.getElementById('wsSchedWrap');if(wrap){wrap.scrollLeft=sx;wrap.scrollTop=sy;}window.scrollTo(0,y);
+});
+(function(){var t=document.querySelector('.tab[data-tab="workstatus"]');if(t)t.addEventListener('click',function(){setTimeout(wsRender,0);});})();
+
+// ---------- 휴일근무 명단 붙여넣기 ----------
+function wsOpenPaste(){document.getElementById('wsPasteText').value='';document.getElementById('wsPastePreview').innerHTML='';document.getElementById('wsPasteModal').classList.add('active');setTimeout(function(){document.getElementById('wsPasteText').focus();},50);}
+function wsClosePaste(){document.getElementById('wsPasteModal').classList.remove('active');}
+function wsPasteMode(){var r=document.querySelector('input[name="wsPasteMode"]:checked');return r?r.value:'add';}
+// 텍스트를 날짜가 나올 때마다 구간으로 나누고, 구간마다 센터·이름을 찾는다
+function wsParsePaste(text){
+    var B=wsBuild();if(!B)return{err:'근태 파일이 아직 없습니다.'};
+    var re=/(\d{1,2})\s*월\s*(\d{1,2})\s*일|(\d{1,2})\s*\/\s*(\d{1,2})(?![\d:])/g,m,marks=[];
+    while((m=re.exec(text))){var mo=+(m[1]||m[3]),dd=+(m[2]||m[4]);if(mo>=1&&mo<=12&&dd>=1&&dd<=31)marks.push({i:m.index,end:re.lastIndex,mo:mo,dd:dd});}
+    if(!marks.length)return{err:'날짜를 찾지 못했습니다. "10월 31일" 또는 "10/31" 형식이 필요합니다.'};
+    // 한 줄에 날짜가 여러 개면 첫 날짜만 구간 시작으로 사용
+    var lineStart=function(i){return text.lastIndexOf('\n',i-1)+1;};
+    marks=marks.filter(function(mk,j){return j===0||lineStart(mk.i)!==lineStart(marks[j-1].i);});
+    var segs=[];
+    marks.forEach(function(mk,j){
+        var y=B.M.y;if(B.M.m===12&&mk.mo===1)y++;if(B.M.m===1&&mk.mo===12)y--;
+        var ds=y+'-'+String(mk.mo).padStart(2,'0')+'-'+String(mk.dd).padStart(2,'0');
+        var st=j===0?0:lineStart(mk.i),en=j+1<marks.length?lineStart(marks[j+1].i):text.length;
+        var body=text.slice(st,en);
+        var cen=B.centers.filter(function(c){return body.indexOf(c)>=0;});
+        var pool=cen.length?B.people.filter(function(pp){return cen.indexOf(pp.center)>=0;}):B.people;
+        var r=wsMatchNames(body.replace(re,' '),pool);
+        var prev=segs.find(function(s){return s.ds===ds&&s.cen.join()===cen.join();});
+        if(prev){r.found.forEach(function(pp){if(prev.found.indexOf(pp)<0)prev.found.push(pp);});prev.bad=prev.bad.concat(r.bad);}
+        else segs.push({ds:ds,cen:cen,pool:pool,found:r.found,bad:r.bad});
+    });
+    return{segs:segs,B:B};
+}
+function wsMatchNames(text,pool){
+    var found=[],t=text;
+    var sorted=pool.slice().sort(function(a,b){return b.name.length-a.name.length;});
+    sorted.forEach(function(pp){
+        var cands=[pp.name],base=pp.name.replace(/[A-Za-z]+$/,'');
+        if(base!==pp.name&&base.length>=2&&pool.filter(function(q){return q.name.replace(/[A-Za-z]+$/,'')===base;}).length===1)cands.push(base);
+        for(var ci=0;ci<cands.length;ci++){
+            var nm=cands[ci],from=0,idx;
+            while((idx=t.indexOf(nm,from))>=0){if(idx===0||!/[가-힣]/.test(t.charAt(idx-1)))break;from=idx+1;}
+            if(idx>=0){found.push(pp);t=t.slice(0,idx)+Array(nm.length+1).join(' ')+t.slice(idx+nm.length);break;}
+        }
+    });
+    var stop=/센터|명단|근무|신청|휴무|휴일|주말|총|입니다|팀$|오전|오후|일본어|중국어|영어|외국어|스페인|프랑스|출근|요일|명$|감사|부탁|드립니다|확인|안녕|토|일$/;
+    var bad=t.split(/[\s,，·、\/:;()\[\]*.~\-]+/).filter(function(w){return/^[가-힣]{2,4}[A-Za-z]?$/.test(w)&&!stop.test(w);});
+    return{found:found,bad:bad};
+}
+function wsPreviewPaste(){
+    var el=document.getElementById('wsPastePreview'),txt=document.getElementById('wsPasteText').value;
+    if(!txt.trim()){el.innerHTML='';_wsPasteSegs=[];return;}
+    var r=wsParsePaste(txt);
+    if(r.err){el.innerHTML='<p style="color:var(--red);">'+r.err+'</p>';_wsPasteSegs=[];return;}
+    _wsPasteSegs=r.segs;
+    var mode=wsPasteMode(),modeTxt={add:'출근 체크',replace:'명단으로 교체',remove:'출근 삭제'}[mode];
+    var h='';
+    r.segs.forEach(function(s){
+        var d=new Date(s.ds+'T00:00:00'),inM=s.ds.slice(0,7)===attendanceMonth;
+        h+='<div class="ws-pv-seg"><div class="ws-pv-h">'+(d.getMonth()+1)+'/'+d.getDate()+'('+WS_DOW[d.getDay()]+') · '+(s.cen.length?s.cen.join(', ')+'센터':'센터 미지정(전체에서 검색)')+' · '+modeTxt+' '+s.found.length+'명</div>';
+        if(!inM)h+='<div style="color:var(--red);">⚠ 근태파일 월('+attendanceMonth+')과 다른 날짜입니다. 저장은 되지만 해당 월 근태파일을 올렸을 때 반영됩니다.</div>';
+        h+=s.found.map(function(pp){return'<span class="ws-pv-name">'+wsEsc(pp.name)+(s.cen.length?'':' <small>'+wsEsc(pp.center)+'</small>')+'</span>';}).join('');
+        if(mode==='replace'&&s.cen.length){
+            var off=s.pool.filter(function(pp){return s.found.indexOf(pp)<0&&pp.cells[s.ds]&&pp.cells[s.ds].v===1;});
+            if(off.length)h+='<div style="margin-top:3px;color:var(--slate);">해제: '+off.map(function(pp){return wsEsc(pp.name);}).join(', ')+'</div>';
+        }
+        if(s.bad.length)h+='<div style="margin-top:3px;">명단에서 못 찾은 이름: '+s.bad.map(function(w){return'<span class="ws-pv-name ws-pv-bad">'+wsEsc(w)+'</span>';}).join('')+'</div>';
+        h+='</div>';
+    });
+    el.innerHTML=h;
+}
+function wsApplyPaste(){
+    wsPreviewPaste();
+    if(!_wsPasteSegs.length){alert('적용할 명단이 없습니다.');return;}
+    var mode=wsPasteMode(),n=0;
+    _wsPasteSegs.forEach(function(s){
+        if(mode==='replace'&&!s.cen.length){alert('교체 모드는 센터명이 있어야 합니다 ('+s.ds+'). 출근 체크로 적용하거나 센터명을 포함해 주세요.');return;}
+        s.found.forEach(function(pp){wsSetOverride(s.ds,pp.name,mode==='remove'?'':1);n++;});
+        if(mode==='replace')s.pool.forEach(function(pp){if(s.found.indexOf(pp)<0&&pp.cells[s.ds]&&pp.cells[s.ds].v===1){wsSetOverride(s.ds,pp.name,'');n++;}});
+    });
+    wsPersist('wsOverrides',wsOverrides);
+    wsClosePaste();wsRender();
+}
+
+// ---------- 엑셀 다운로드 (xlsx-js-style + JSZip, 필요할 때만 로드) ----------
+function wsLoadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('스크립트 로드 실패: '+src));};document.head.appendChild(s);});}
+async function wsLoadLibs(){
+    if(!window._XLSX_STYLE){
+        var orig=window.XLSX;
+        await wsLoadScript('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js');
+        window._XLSX_STYLE=window.XLSX;window.XLSX=orig; // 기존 SheetJS(파싱용)는 그대로 유지
+    }
+    if(!window.JSZip)await wsLoadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+    return window._XLSX_STYLE;
+}
+function wsXStyle(sp){
+    var th={style:'thin',color:{rgb:'000000'}},hr={style:'hair',color:{rgb:'000000'}};
+    var h=sp.h===undefined?'center':sp.h;
+    var s={font:{name:'맑은 고딕',sz:sp.sz||9,bold:!!sp.bold,color:{rgb:sp.color||'000000'}},alignment:{vertical:'center'}};
+    if(h)s.alignment.horizontal=h;
+    if(sp.wrap)s.alignment.wrapText=true;
+    if(sp.fill)s.fill={patternType:'solid',fgColor:{rgb:sp.fill}};
+    if(sp.bd==='hdrL')s.border={top:th,left:th,right:hr};
+    else if(sp.bd==='hdrM')s.border={top:th,left:hr,right:hr};
+    else if(sp.bd==='hdrR')s.border={top:th,left:hr,right:th};
+    else if(sp.bd!=='none')s.border={top:th,bottom:th,left:th,right:th};
+    if(sp.fmt)s.numFmt=WS_FMT[sp.fmt];
+    return s;
+}
+function wsToSheet(XS,model){
+    var ws={},R=model.rows.length,nC=model.cols.length;
+    model.rows.forEach(function(row,r){
+        for(var c=0;c<nC;c++){
+            var sp=row.cells[c];if(!sp)continue;
+            if((sp.v===''||sp.v==null)&&sp.bd==='none'&&!sp.fill)continue;
+            var cell=typeof sp.v==='number'?{t:'n',v:sp.v}:{t:'s',v:sp.v==null?'':String(sp.v)};
+            cell.s=wsXStyle(sp);if(cell.s.numFmt)cell.z=cell.s.numFmt;
+            ws[XS.utils.encode_cell({r:r,c:c})]=cell;
+        }
+    });
+    ws['!ref']=XS.utils.encode_range({s:{r:0,c:0},e:{r:R-1,c:nC-1}});
+    ws['!cols']=model.cols.map(function(c){var o={wch:Math.max(1,c.w-0.63)};if(c.hidden)o.hidden=true;return o;});
+    ws['!rows']=model.rows.map(function(r){var o={};if(r.ht)o.hpt=r.ht;if(r.hidden)o.hidden=true;return o;});
+    if(model.autofilter)ws['!autofilter']={ref:model.autofilter};
+    return ws;
+}
+async function wsDownloadExcel(){
+    var B=wsBuild();if(!B){alert('근태 파일이 없습니다.');return;}
+    try{
+        showLoading('엑셀 생성 중...');updateLoading(30,'라이브러리 로드 중...');
+        var XS=await wsLoadLibs();
+        updateLoading(60,'시트 작성 중...');
+        var wb=XS.utils.book_new();
+        XS.utils.book_append_sheet(wb,wsToSheet(XS,wsModelSummary(B)),'종합현황');
+        XS.utils.book_append_sheet(wb,wsToSheet(XS,wsModelSchedule(B)),'근무일정');
+        var buf=XS.write(wb,{bookType:'xlsx',type:'array',bookSST:true});
+        var zip=await JSZip.loadAsync(buf);
+        for(var p of Object.keys(zip.files)){
+            if(p.indexOf('xl/worksheets/sheet')===0&&/\.xml$/.test(p)){
+                var xml=await zip.file(p).async('string');
+                xml=/<sheetView /.test(xml)?xml.replace(/<sheetView /g,'<sheetView showGridLines="0" '):xml.replace(/<sheetViews>\s*<sheetView/,'<sheetViews><sheetView showGridLines="0"');
+                if(!/<sheetViews>/.test(xml))xml=xml.replace(/(<dimension[^>]*\/>)/,'$1<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>');
+                zip.file(p,xml);
+            }
+        }
+        var blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        var fd=B.M.fileDate?B.M.fileDate.slice(5,7)+B.M.fileDate.slice(8,10):'';
+        var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+        a.download='뇌새김 '+B.M.m+'월 근무현황파일'+(fd?'_'+fd:'')+'_종합.xlsx';
+        document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+        updateLoading(100,'완료!');
+    }catch(err){alert('엑셀 생성 오류: '+err.message);console.error(err);}
+    hideLoading();
+}
 </script>
 <div class="float-nav">
     <div class="float-nav-menu" id="floatMenu"></div>
