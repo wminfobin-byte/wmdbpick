@@ -290,6 +290,9 @@
         .ws-card h3{font-size:0.95rem;color:var(--navy);margin-bottom:4px}
         .ws-card .ws-sub{font-size:0.74rem;color:var(--slate-light);margin-bottom:10px}
         .ws-scroll{overflow:auto;max-height:78vh;border:1px solid var(--gray-200)}
+        /* 근무현황 탭: 표가 넓어서 좌우 여백 없이 화면 전체 폭 사용 */
+        .content:has(#tab-workstatus.active){max-width:none;padding:12px 6px}
+        #tab-workstatus .ws-card{padding:10px 8px;border-radius:8px;margin-bottom:12px}
         table.ws-x{border-collapse:collapse;width:auto;table-layout:fixed;font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;line-height:1.1}
         table.ws-x td{padding:0 2px;border:1px solid #000;white-space:nowrap;overflow:hidden;text-overflow:clip;font-variant-numeric:tabular-nums}
         table.ws-x tr:hover{background:transparent}
@@ -517,7 +520,7 @@
 <div class="modal-overlay" id="wsPasteModal">
     <div class="modal" style="max-width:760px;">
         <div class="modal-header"><h3>휴일근무 명단 붙여넣기</h3><span class="modal-close" onclick="wsClosePaste()">&times;</span></div>
-        <p style="font-size:0.78rem;color:var(--slate);margin-bottom:8px;">메신저로 받은 명단을 그대로 붙여넣으세요. 날짜(예: <b>10월 31일</b>)·센터명·이름을 자동으로 찾습니다. 여러 날짜/센터를 한 번에 붙여넣어도 됩니다.</p>
+        <p style="font-size:0.78rem;color:var(--slate);margin-bottom:8px;">메신저로 받은 명단을 그대로 붙여넣으세요. 날짜(<b>10월 31일</b> / <b>10/31</b>)·센터명(충청·수도권도 인식)·이름을 자동으로 찾고, <b>"매니저 : 김OO"</b>·<b>"김OO 매니저"</b>는 휴일 담당 칸에 넣습니다. 센터마다 양식이 달라도, 여러 센터 명단을 한 번에 붙여넣어도 됩니다.</p>
         <textarea id="wsPasteText" rows="9" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:0.82rem;font-family:inherit;resize:vertical;" placeholder="[10월 31일 (토) 당산센터 휴무근무 신청 명단]&#10;일본어팀 : 김선숙,김현진,임남희, 황인태,신선희,임소영,이경임&#10;*총  7명 입니다" oninput="wsPreviewPaste()"></textarea>
         <div style="display:flex;gap:16px;align-items:center;margin:10px 0;font-size:0.8rem;flex-wrap:wrap;">
             <label><input type="radio" name="wsPasteMode" value="add" checked onchange="wsPreviewPaste()"> 출근 체크 (1.0)</label>
@@ -4198,20 +4201,59 @@ function wsParsePaste(text){
         var y=B.M.y;if(B.M.m===12&&mk.mo===1)y++;if(B.M.m===1&&mk.mo===12)y--;
         var ds=y+'-'+String(mk.mo).padStart(2,'0')+'-'+String(mk.dd).padStart(2,'0');
         var st=j===0?0:lineStart(mk.i),en=j+1<marks.length?lineStart(marks[j+1].i):text.length;
-        var body=text.slice(st,en);
-        var cen=B.centers.filter(function(c){return body.indexOf(c)>=0;});
+        var body=text.slice(st,en).replace(re,' ');
+        var cen=wsFindCenters(body,B.centers);
+        var mg=wsExtractMgrs(body);body=mg.rest;
         var pool=cen.length?B.people.filter(function(pp){return cen.indexOf(pp.center)>=0;}):B.people;
-        var r=wsMatchNames(body.replace(re,' '),pool);
+        var r=wsMatchNames(body,pool);
         var prev=segs.find(function(s){return s.ds===ds&&s.cen.join()===cen.join();});
-        if(prev){r.found.forEach(function(pp){if(prev.found.indexOf(pp)<0)prev.found.push(pp);});prev.bad=prev.bad.concat(r.bad);}
-        else segs.push({ds:ds,cen:cen,pool:pool,found:r.found,bad:r.bad});
+        if(prev){r.found.forEach(function(pp){if(prev.found.indexOf(pp)<0)prev.found.push(pp);});prev.bad=prev.bad.concat(r.bad);prev.amb=prev.amb.concat(r.amb);prev.mgrs=prev.mgrs.concat(mg.list);}
+        else segs.push({ds:ds,cen:cen,pool:pool,found:r.found,bad:r.bad,amb:r.amb,mgrs:mg.list});
+    });
+    // 매니저 칸(수도권/중부): 센터 → 없으면 찾은 사람들의 센터로 판단
+    segs.forEach(function(s){
+        var cs=s.cen.length?s.cen:s.found.map(function(pp){return pp.center;});
+        var jung=cs.filter(function(c){return WS_REGION_JUNG.indexOf(c)>=0;}).length,sudo=cs.length-jung;
+        s.region=jung>sudo?'jung':'sudo';
     });
     return{segs:segs,B:B};
 }
+// 지역명 → 센터 (메신저 양식마다 '충청', '수도권' 등으로 쓰는 경우)
+var WS_REGION_JUNG=['대전','유성'];
+var WS_REGION_ALIAS={'충청':['대전','유성'],'중부':['대전','유성'],'수도권':['당산','강동'],'서울':['당산','강동']};
+function wsFindCenters(body,centers){
+    var out=centers.filter(function(c){return body.indexOf(c)>=0;});
+    if(!out.length)Object.keys(WS_REGION_ALIAS).forEach(function(k){
+        if(body.indexOf(k)<0)return;
+        WS_REGION_ALIAS[k].forEach(function(c){if(centers.indexOf(c)>=0&&out.indexOf(c)<0)out.push(c);});
+    });
+    return out;
+}
+// "매니저 : 김태연", "강지연 매니저", "센터장: 홍길동" → 담당자로 빼고, 본문에서는 지운다
+function wsExtractMgrs(body){
+    var list=[],t=body,blank=function(s){return Array(s.length+1).join(' ');};
+    var nameRe=/^[가-힣]{2,4}[A-Za-z]?$/;
+    t=t.replace(/(매니저|센터장)\s*님?\s*[:：]\s*([^\n]*?)(?=매니저|센터장|\n|$)/g,function(all,role,rest){
+        rest.split(/[\s,，·、\/;()]+/).forEach(function(w){w=w.replace(/님$/,'');if(nameRe.test(w))list.push({role:role,name:w});});
+        return blank(all);
+    });
+    t=t.replace(/(^|[^가-힣])([가-힣]{2,4}[A-Za-z]?)[ \t]*(매니저|센터장)(님)?/g,function(all,pre,nm,role){
+        list.push({role:role,name:nm});return pre+blank(all.slice(pre.length));
+    });
+    return{list:list,rest:t};
+}
 function wsMatchNames(text,pool){
-    var found=[],t=text;
+    var found=[],amb=[],t=text,ambSeen={};
+    // 동명이인(센터 미지정으로 여러 센터에서 찾을 때): 자동 체크하지 않고 알려준다
+    var cnt={};pool.forEach(function(pp){cnt[pp.name]=(cnt[pp.name]||0)+1;});
     var sorted=pool.slice().sort(function(a,b){return b.name.length-a.name.length;});
     sorted.forEach(function(pp){
+        if(cnt[pp.name]>1){
+            if(ambSeen[pp.name])return;
+            var ix=t.indexOf(pp.name);
+            if(ix>=0&&(ix===0||!/[가-힣]/.test(t.charAt(ix-1)))){ambSeen[pp.name]=1;amb.push(pp.name+'('+pool.filter(function(q){return q.name===pp.name;}).map(function(q){return q.center;}).join('/')+')');t=t.slice(0,ix)+Array(pp.name.length+1).join(' ')+t.slice(ix+pp.name.length);}
+            return;
+        }
         var cands=[pp.name],base=pp.name.replace(/[A-Za-z]+$/,'');
         if(base!==pp.name&&base.length>=2&&pool.filter(function(q){return q.name.replace(/[A-Za-z]+$/,'')===base;}).length===1)cands.push(base);
         for(var ci=0;ci<cands.length;ci++){
@@ -4220,9 +4262,9 @@ function wsMatchNames(text,pool){
             if(idx>=0){found.push(pp);t=t.slice(0,idx)+Array(nm.length+1).join(' ')+t.slice(idx+nm.length);break;}
         }
     });
-    var stop=/센터|명단|근무|신청|휴무|휴일|주말|총|입니다|팀$|오전|오후|일본어|중국어|영어|외국어|스페인|프랑스|출근|요일|명$|감사|부탁|드립니다|확인|안녕|토|일$/;
-    var bad=t.split(/[\s,，·、\/:;()\[\]*.~\-]+/).filter(function(w){return/^[가-힣]{2,4}[A-Za-z]?$/.test(w)&&!stop.test(w);});
-    return{found:found,bad:bad};
+    var stop=/센터|명단|근무|신청|휴무|휴일|주말|총|입니다|팀$|오전|오후|일본어|중국어|영어|외국어|스페인|프랑스|출근|요일|명$|감사|부탁|드립니다|확인|안녕|토|일$|현황|지원|인원|충청|중부|수도권|서울|매니저|센터장|팀장|실장|참석|제외|추가|변경|공유|드려요|합니다|있습니다|아래|이상|최종/;
+    var bad=t.split(/[\s,，·、\/:;()\[\]*.~\-]+/).map(function(w){return w.replace(/님$/,'');}).filter(function(w){return/^[가-힣]{2,4}[A-Za-z]?$/.test(w)&&!stop.test(w)&&WS_CENTERS_DEFAULT.indexOf(w)<0&&!pool.some(function(pp){return pp.center===w;});});
+    return{found:found,bad:bad,amb:amb};
 }
 function wsPreviewPaste(){
     var el=document.getElementById('wsPastePreview'),txt=document.getElementById('wsPasteText').value;
@@ -4241,10 +4283,27 @@ function wsPreviewPaste(){
             var off=s.pool.filter(function(pp){return s.found.indexOf(pp)<0&&pp.cells[s.ds]&&pp.cells[s.ds].v===1;});
             if(off.length)h+='<div style="margin-top:3px;color:var(--slate);">해제: '+off.map(function(pp){return wsEsc(pp.name);}).join(', ')+'</div>';
         }
-        if(s.bad.length)h+='<div style="margin-top:3px;">명단에서 못 찾은 이름: '+s.bad.map(function(w){return'<span class="ws-pv-name ws-pv-bad">'+wsEsc(w)+'</span>';}).join('')+'</div>';
+        if(s.mgrs.length)h+='<div style="margin-top:3px;color:#1d4ed8;">담당 '+(mode==='remove'?'삭제':'입력')+': '+s.mgrs.map(function(g){return wsEsc(g.name)+' <small>('+(g.role==='센터장'?'센터장':(s.region==='jung'?'중부':'수도권')+' 매니저')+')</small>';}).join(', ')+'</div>';
+        if(s.amb.length)h+='<div style="margin-top:3px;color:#b45309;">⚠ 동명이인이라 체크하지 않음 (센터명을 넣어 다시 붙여넣기): '+s.amb.map(wsEsc).join(', ')+'</div>';
+        if(s.bad.length)h+='<div style="margin-top:3px;">명단에서 못 찾은 이름:'+s.bad.map(function(w){return'<span class="ws-pv-name ws-pv-bad">'+wsEsc(w)+'</span>';}).join('')+'</div>';
         h+='</div>';
     });
     el.innerHTML=h;
+}
+// 명단의 매니저·센터장을 휴일 담당 칸에 넣는다 (이미 있으면 그대로, 빈 칸부터 채움)
+function wsApplyMgrs(s,mode){
+    var e=wsManagers[s.ds];
+    if(!e)e=wsManagers[s.ds]={sudo:['','',''],jung:['',''],head:['']};
+    var size={sudo:3,jung:2,head:1};
+    s.mgrs.forEach(function(g){
+        var k=g.role==='센터장'?'head':s.region,arr=e[k]||(e[k]=[]);
+        while(arr.length<size[k])arr.push('');
+        var at=arr.indexOf(g.name);
+        if(mode==='remove'){if(at>=0)arr[at]='';return;}
+        if(at>=0)return;
+        var free=arr.indexOf('');
+        if(free>=0)arr[free]=g.name;else arr[size[k]-1]=g.name;
+    });
 }
 function wsApplyPaste(){
     wsPreviewPaste();
@@ -4254,8 +4313,10 @@ function wsApplyPaste(){
         if(mode==='replace'&&!s.cen.length){alert('교체 모드는 센터명이 있어야 합니다 ('+s.ds+'). 출근 체크로 적용하거나 센터명을 포함해 주세요.');return;}
         s.found.forEach(function(pp){wsSetOverride(s.ds,pp.name,mode==='remove'?'':1);n++;});
         if(mode==='replace')s.pool.forEach(function(pp){if(s.found.indexOf(pp)<0&&pp.cells[s.ds]&&pp.cells[s.ds].v===1){wsSetOverride(s.ds,pp.name,'');n++;}});
+        if(s.mgrs.length)wsApplyMgrs(s,mode);
     });
     wsPersist('wsOverrides',wsOverrides);
+    wsPersist('wsManagers',wsManagers);
     wsClosePaste();wsRender();
 }
 

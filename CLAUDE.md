@@ -38,6 +38,8 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
    - 셀 모델(`wsModelSummary`/`wsModelSchedule`) 하나로 화면(`wsModelHTML`)과 엑셀(`wsToSheet`, xlsx-js-style+JSZip 지연 로드)을 같이 만든다
    - 근태 텍스트 변환 `wsParseVal`: 출근→1, 반차→0.5(연두), 오전/오후 결근→0.5(주황), 연차·휴가·경조·공가·장기공석→파랑, 대체휴무→노랑, 결근·퇴사→빨강
    - 집계: 평일 / 토요(토요일만) / 휴일(일요일+평일 공휴일). 그룹별·센터 블록은 1.0만 카운트, 센터별 합계는 0.5 포함 (원본 수식과 동일)
+   - 붙여넣기 파서 `wsParsePaste`: 날짜(`N월 N일`/`N/N`) 줄마다 구간 분리 → `wsFindCenters`(센터명, 없으면 `WS_REGION_ALIAS` 충청·중부→대전·유성, 수도권·서울→당산·강동) → `wsExtractMgrs`(`매니저 : 이름`/`이름 매니저`/센터장 → `wsManagers` 칸, 수도권/중부는 센터로 판단) → `wsMatchNames`(동명이인은 체크 안 하고 경고)
+   - 휴일 판정: 토·일은 요일, 평일 공휴일은 `KR_HOLIDAYS`(연도별 수기 목록, 매년 갱신)
    - IDB `wsManagers`(휴일 담당 매니저·센터장), `wsOverrides`(붙여넣기·클릭 수동 출근 변경, 근태 재업로드에도 유지), `wsCenters`(대상 센터, 기본 당산·강동·대전·유성) — GitHub 동기화 payload에 포함
 
 ## Key Data Model
