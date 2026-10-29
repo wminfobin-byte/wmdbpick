@@ -670,7 +670,7 @@ function applyAuthUI(){
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
 // 근무현황 탭: 휴일 담당 매니저/센터장 {'YYYY-MM-DD':{sudo:[3],jung:[2],head:[1]}}, 수동 출근 변경 {'YYYY-MM-DD':{'이름':1|''}}, 대상 센터
-var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={};
+var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}};
 // 로컬 변경 추적 (localStorage에 영속화)
 var localDirty=localStorage.getItem('localDirty')==='1';
 var _suppressDirty=false;
@@ -856,12 +856,13 @@ async function loadFromStorage(onProgress){
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust'),idbGet('holidayClosed'),
-            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra')
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster')
         ]);
         if(results[12])wsManagers=results[12];
         if(results[13])wsOverrides=results[13];
         if(results[14])wsCenters=results[14];
         if(results[15])wsHoliExtra=results[15];
+        if(results[16])wsRoster=results[16];
         if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
@@ -1061,8 +1062,10 @@ async function handleAttendanceFile(file){
         var r=await processAttendanceFile(file);
         updateLoading(70,'저장 중...');
         await new Promise(function(r2){setTimeout(r2,30);});
+        wsUpdateRoster(); // 이전 파일 명단을 먼저 보관 (새 파일에서 빠진 퇴사자 유지용)
         attendanceData=r.people;attendanceMonth=r.month;attendanceFiles=[r.fileName];
         saveAttendance();
+        wsUpdateRoster();
         updateLoading(90,'화면 업데이트 중...');
         await new Promise(function(r2){setTimeout(r2,30);});
         updateAll();updateModalUI();wsRender();
@@ -3600,7 +3603,7 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
         var wrapper=JSON.stringify({ts:syncTs,z:compressed});
@@ -3720,6 +3723,7 @@ async function loadFromJSON(){
             if(payload.wsOverrides)wsOverrides=payload.wsOverrides;
             if(payload.wsCenters)wsCenters=payload.wsCenters;
             if(payload.wsHoliExtra)wsHoliExtra=payload.wsHoliExtra;
+            if(payload.wsRoster)wsRoster=payload.wsRoster;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3737,6 +3741,7 @@ async function loadFromJSON(){
                     await idbPut('wsOverrides',wsOverrides);
                     if(wsCenters)await idbPut('wsCenters',wsCenters);
                     await idbPut('wsHoliExtra',wsHoliExtra);
+                    await idbPut('wsRoster',wsRoster);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
@@ -3912,15 +3917,57 @@ function wsActiveCenters(){
     var all=wsEligibleCenters(),sel=(wsCenters&&wsCenters.length)?wsCenters:WS_CENTERS_DEFAULT;
     return sel.filter(function(c){return all.indexOf(c)>=0;});
 }
+// ---------- 퇴사자 유지 ----------
+// 같은 달 근태파일에 한 번이라도 있었던 사람(영어·제2외국어·톡이즈)은 wsRoster에 보관한다.
+// 새 파일에서 빠지면 명단에 그대로 두고, 이전 기록은 유지 + 마지막으로 확인된 파일 날짜 다음 날부터 '퇴사'
+function wsRosterKey(p){return String(p.center||'').trim()+'|'+wsName(p.name);}
+function wsUpdateRoster(){
+    if(!attendanceMonth||!attendanceData.length)return false;
+    var fd=wsFileDate()||(attendanceMonth+'-31'),ch=false;
+    if(wsRoster.month!==attendanceMonth){wsRoster={month:attendanceMonth,people:{}};ch=true;}
+    attendanceData.forEach(function(p){
+        if(!wsGroupOf(p))return;
+        var k=wsRosterKey(p),e=wsRoster.people[k];
+        if(e&&e.seen>fd)return; // 더 옛날 파일을 올린 경우 덮어쓰지 않음
+        if(e&&e.seen===fd)return;
+        wsRoster.people[k]={p:{department:p.department,group:p.group,center:p.center,team:p.team,name:p.name,daily:p.daily},seen:fd};ch=true;
+    });
+    if(ch)wsPersist('wsRoster',wsRoster);
+    return ch;
+}
+// 현재 파일 + 빠진 사람(퇴사 처리)
+function wsAllPeople(){
+    wsUpdateRoster();
+    if(wsRoster.month!==attendanceMonth)return attendanceData;
+    var have={},fd=wsFileDate();
+    attendanceData.forEach(function(p){have[wsRosterKey(p)]=1;});
+    var out=attendanceData.slice();
+    Object.keys(wsRoster.people).forEach(function(k){
+        if(have[k])return;
+        var e=wsRoster.people[k],daily=Object.assign({},e.p.daily||{});
+        var y=+attendanceMonth.slice(0,4),m=+attendanceMonth.slice(5,7),last=new Date(y,m,0).getDate();
+        for(var dd=1;dd<=last;dd++){
+            var ds=attendanceMonth+'-'+String(dd).padStart(2,'0');
+            if(ds>e.seen&&(!fd||ds<=fd))daily[dd]='퇴사';
+        }
+        out.push(Object.assign({},e.p,{daily:daily,_retired:e.seen}));
+    });
+    return out;
+}
+function wsRetiredNote(B){
+    var rt=B.people.filter(function(pp){return pp.retired;});
+    if(!rt.length)return'';
+    return' · <span style="color:#dc2626;" title="'+wsEsc(rt.map(function(pp){return pp.name+'('+pp.center+')';}).join(', '))+'">새 파일에서 빠진 인원 '+rt.length+'명 (명단 유지, 이후 퇴사 처리)</span>';
+}
 function wsBuild(){
     var M=wsMonth();if(!M)return null;
-    var centers=wsActiveCenters(),people=[],days=[];
+    var centers=wsActiveCenters(),people=[],days=[],src=wsAllPeople();
     M.weeks.forEach(function(w){w.days.forEach(function(d){days.push(d);});});
     centers.forEach(function(c){
-        attendanceData.forEach(function(p){
+        src.forEach(function(p){
             if(String(p.center||'').trim()!==c)return;
             var g=wsGroupOf(p);if(!g)return;
-            people.push({raw:p,name:wsName(p.name),center:c,group:g});
+            people.push({raw:p,name:wsName(p.name),center:c,group:g,retired:p._retired||''});
         });
     });
     people.forEach(function(pp){
@@ -4215,7 +4262,7 @@ function wsRender(){
     if(!B){root.innerHTML='<div class="empty-state" style="display:block;"><div style="font-size:3rem;">&#128197;</div><p>우측 상단 [데이터 업로드] → <b>근태보고</b> 파일을 올리면 종합현황·근무일정이 표시됩니다</p></div>';return;}
     var ovCnt=0;Object.keys(wsOverrides).forEach(function(ds){if(ds.slice(0,7)===attendanceMonth)ovCnt+=Object.keys(wsOverrides[ds]).length;});
     var elig=wsEligibleCenters(),act=B.centers;
-    var h='<div class="ws-bar"><div class="ws-meta"><b>'+B.M.y+'년 '+B.M.m+'월</b> 근무현황 · 근태파일 <b>'+wsEsc(attendanceFiles[0]||'')+'</b> · 대상 '+B.people.length+'명'+(ovCnt?' · <span style="color:#7c3aed;">수동 변경 '+ovCnt+'건</span>':'')+'</div>';
+    var h='<div class="ws-bar"><div class="ws-meta"><b>'+B.M.y+'년 '+B.M.m+'월</b> 근무현황 · 근태파일 <b>'+wsEsc(attendanceFiles[0]||'')+'</b> · 대상 '+B.people.length+'명'+wsRetiredNote(B)+(ovCnt?' · <span style="color:#7c3aed;">수동 변경 '+ovCnt+'건</span>':'')+'</div>';
     h+='<div class="ws-btns"><button class="btn" style="background:#ede9fe;color:#5b21b6;" onclick="wsOpenPaste()">휴일근무 명단 붙여넣기</button>';
     if(ovCnt)h+='<button class="btn" style="background:#eee;color:#333;" onclick="wsClearOverrides()">수동 변경 초기화</button>';
     h+='<button class="btn btn-primary" onclick="wsDownloadExcel()">엑셀 다운로드</button></div></div>';
