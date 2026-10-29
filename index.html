@@ -300,6 +300,10 @@
         table.ws-x td.ws-tg{cursor:pointer}
         table.ws-x td.ws-tg:hover{outline:2px solid var(--blue);outline-offset:-2px}
         table.ws-x td.ws-ov{box-shadow:inset 0 0 0 2px #7c3aed}
+        table.ws-x td.ws-hd{cursor:pointer}
+        table.ws-x td.ws-hd:hover{outline:2px solid #fbbf24;outline-offset:-2px}
+        .ws-holi{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.8rem;color:#78350f;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+        .ws-holi button{border:1px solid #f59e0b;background:#fff;color:#92400e;border-radius:6px;padding:2px 8px;font-size:0.76rem;cursor:pointer}
         table.ws-x tr.ws-hdr td{position:sticky;top:0;z-index:2}
         table.ws-x td.ws-st{position:sticky;z-index:1}
         table.ws-x tr.ws-hdr td.ws-st{z-index:3}
@@ -666,7 +670,7 @@ function applyAuthUI(){
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
 // 근무현황 탭: 휴일 담당 매니저/센터장 {'YYYY-MM-DD':{sudo:[3],jung:[2],head:[1]}}, 수동 출근 변경 {'YYYY-MM-DD':{'이름':1|''}}, 대상 센터
-var wsManagers={},wsOverrides={},wsCenters=null;
+var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={};
 // 로컬 변경 추적 (localStorage에 영속화)
 var localDirty=localStorage.getItem('localDirty')==='1';
 var _suppressDirty=false;
@@ -852,11 +856,12 @@ async function loadFromStorage(onProgress){
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust'),idbGet('holidayClosed'),
-            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters')
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra')
         ]);
         if(results[12])wsManagers=results[12];
         if(results[13])wsOverrides=results[13];
         if(results[14])wsCenters=results[14];
+        if(results[15])wsHoliExtra=results[15];
         if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
@@ -3595,7 +3600,7 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
         var wrapper=JSON.stringify({ts:syncTs,z:compressed});
@@ -3714,6 +3719,7 @@ async function loadFromJSON(){
             if(payload.wsManagers)wsManagers=payload.wsManagers;
             if(payload.wsOverrides)wsOverrides=payload.wsOverrides;
             if(payload.wsCenters)wsCenters=payload.wsCenters;
+            if(payload.wsHoliExtra)wsHoliExtra=payload.wsHoliExtra;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3730,6 +3736,7 @@ async function loadFromJSON(){
                     await idbPut('wsManagers',wsManagers);
                     await idbPut('wsOverrides',wsOverrides);
                     if(wsCenters)await idbPut('wsCenters',wsCenters);
+                    await idbPut('wsHoliExtra',wsHoliExtra);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
@@ -3860,6 +3867,27 @@ function wsParseVal(raw){
 function wsFileDate(){var f=(attendanceFiles&&attendanceFiles[0])||'';var m=f.match(/(\d{4})(\d{2})(\d{2})/);return m?m[1]+'-'+m[2]+'-'+m[3]:'';}
 function wsSerial(dt){return Math.round((Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate())-Date.UTC(1899,11,30))/86400000);}
 // 월~일 7일 × 6주 (원본과 동일: 1주차는 그 달 1일이 속한 주의 월요일부터)
+// 휴일 판정: 수동 지정(wsHoliExtra: true=휴일 추가, false=목록의 휴일 해제)이 우선, 없으면 KR_HOLIDAYS
+// → 임시공휴일·대체공휴일이 갑자기 생겨도 화면에서 날짜를 눌러 바로 반영 (동기화 포함)
+function wsIsHoliday(ds){return Object.prototype.hasOwnProperty.call(wsHoliExtra,ds)?!!wsHoliExtra[ds]:KR_HOLI_SET.has(ds);}
+function wsToggleHoliday(ds){
+    var d=new Date(ds+'T00:00:00'),dow=d.getDay();if(dow===0||dow===6)return;
+    var now=wsIsHoliday(ds),lab=(d.getMonth()+1)+'/'+d.getDate()+'('+WS_DOW[dow]+')';
+    if(!confirm(lab+'을(를) '+(now?'평일로 되돌릴까요?':'휴일(공휴일)로 지정할까요?\n평일 합계가 아니라 휴일 합계로 집계되고, 휴일 담당 입력·붙여넣기 대상이 됩니다.')))return;
+    var def=KR_HOLI_SET.has(ds);
+    if(!now===def)delete wsHoliExtra[ds];else wsHoliExtra[ds]=!now;
+    wsPersist('wsHoliExtra',wsHoliExtra);
+    var y=window.scrollY;wsRender();window.scrollTo(0,y);
+}
+// 평일인데 출근자가 거의 없는 날 → 임시공휴일 후보로 알림
+function wsHoliCandidates(B){
+    var n=B.people.length;if(n<5)return[];
+    return B.days.filter(function(d){
+        if(!d.inM||d.type!=='wk'||(B.M.fileDate&&d.ds>B.M.fileDate))return false;
+        if(Object.prototype.hasOwnProperty.call(wsHoliExtra,d.ds))return false;
+        return(B.workCnt[d.ds]||0)<n*0.2;
+    });
+}
 function wsMonth(){
     if(!attendanceMonth||!attendanceData.length)return null;
     var y=+attendanceMonth.slice(0,4),m=+attendanceMonth.slice(5,7);
@@ -3867,7 +3895,7 @@ function wsMonth(){
     for(var w=0;w<6;w++){
         var days=[];
         for(var k=0;k<7;k++){
-            var dt=new Date(y,m-1,1-off+w*7+k),ds=formatDate(dt),dow=dt.getDay(),hol=KR_HOLI_SET.has(ds);
+            var dt=new Date(y,m-1,1-off+w*7+k),ds=formatDate(dt),dow=dt.getDay(),hol=wsIsHoliday(ds);
             days.push({ds:ds,dom:dt.getDate(),mon:dt.getMonth()+1,dow:dow,inM:dt.getMonth()===m-1,hol:hol,
                 type:dow===6?'sat':dow===0?'sun':(hol?'hol':'wk'),serial:wsSerial(dt)});
         }
@@ -3978,7 +4006,7 @@ function wsModelSchedule(B){
     // 2행: 헤더
     var h=[wsHdr('센터','hdrL'),wsHdr('성명'),wsHdr('그룹'),wsHdr('휴일근무 횟수','hdrR')];
     B.M.weeks.forEach(function(w,wi){
-        w.days.forEach(function(d){h.push(d.inM?wsHdr(d.serial,'hdrM',{fmt:'d',disp:String(d.dom).padStart(2,'0')+'('+WS_DOW[d.dow]+')'}):wsHdr('','hdrM'));});
+        w.days.forEach(function(d){h.push(d.inM?wsHdr(d.serial,'hdrM',{fmt:'d',disp:String(d.dom).padStart(2,'0')+'('+WS_DOW[d.dow]+')',hd:(d.dow>=1&&d.dow<=5)?d.ds:''}):wsHdr('','hdrM'));});
         h.push(wsHdr((wi+1)+'주차','hdrR'));
     });
     h.push(wsHdr('평일','hdrL'),wsHdr('토요'),wsHdr('일요'),wsHdr('총근무일','hdrR'));
@@ -4055,7 +4083,7 @@ function wsModelSummary(B){
     rows.push({cells:blank(nC)});
     var h=[wsHdr('그룹별','hdrL')];
     B.M.weeks.forEach(function(w,wi){
-        w.days.forEach(function(d){h.push(d.inM?wsHdr(d.serial,'hdrM',{fmt:'d',disp:String(d.dom).padStart(2,'0')+'('+WS_DOW[d.dow]+')'}):wsHdr('','hdrM'));});
+        w.days.forEach(function(d){h.push(d.inM?wsHdr(d.serial,'hdrM',{fmt:'d',disp:String(d.dom).padStart(2,'0')+'('+WS_DOW[d.dow]+')',hd:(d.dow>=1&&d.dow<=5)?d.ds:''}):wsHdr('','hdrM'));});
         h.push(wsHdr((wi+1)+'주차','hdrR'));
     });
     h.push(wsHdr('평일','hdrL'),wsHdr('토요'),wsHdr('휴일'),wsHdr('총근무','hdrR'));
@@ -4158,6 +4186,7 @@ function wsModelHTML(model){
             var at='';
             if(sp.attrs){cls.push('ws-tg');at=' data-ds="'+sp.attrs.ds+'" data-nm="'+wsEsc(sp.attrs.nm)+'" title="클릭: 출근(1.0) ↔ 해제"';}
             if(sp.ov)cls.push('ws-ov');
+            if(sp.hd){cls.push('ws-hd');at+=' data-hd="'+sp.hd+'" title="클릭: 휴일(공휴일) 지정 ↔ 해제"';}
             h+='<td'+(cls.length?' class="'+cls.join(' ')+'"':'')+' style="'+st+'"'+at+'>'+wsEsc(wsDisp(sp))+'</td>';
         });
         h+='</tr>';
@@ -4193,6 +4222,10 @@ function wsRender(){
     h+='<div class="ws-card"><div class="ws-centers"><b style="color:var(--navy);">대상 센터</b>';
     elig.forEach(function(c){h+='<label><input type="checkbox" '+(act.indexOf(c)>=0?'checked':'')+' onchange="wsToggleCenter(\''+wsEsc(c)+'\',this.checked)"> '+wsEsc(c)+'</label>';});
     h+='<span style="color:var(--slate-light);">근태파일의 영어·제2외국어 인원 중 선택한 센터만 집계합니다</span></div></div>';
+    var cand=wsHoliCandidates(B),man=Object.keys(wsHoliExtra).filter(function(ds){return ds.slice(0,7)===attendanceMonth;}).sort();
+    var dl=function(ds){var d=new Date(ds+'T00:00:00');return(d.getMonth()+1)+'/'+d.getDate()+'('+WS_DOW[d.getDay()]+')';};
+    if(cand.length)h+='<div class="ws-holi"><b>⚠ 평일인데 출근자가 거의 없는 날이 있습니다.</b> 임시공휴일·대체공휴일이면 휴일로 지정하세요:'+cand.map(function(d){return'<button onclick="wsToggleHoliday(\''+d.ds+'\')">'+dl(d.ds)+' 근무 '+(Math.round((B.workCnt[d.ds]||0)*10)/10)+'명 → 휴일 지정</button>';}).join('')+'</div>';
+    h+='<p class="ws-sub" style="margin:-4px 0 10px;">평일 공휴일은 공휴일 목록(대체공휴일 포함)으로 자동 판단합니다. 목록에 없는 임시공휴일·회사 휴무는 <b>표의 날짜 칸을 클릭</b>해 휴일로 지정/해제하세요.'+(man.length?' · 수동 지정: '+man.map(function(ds){return'<b>'+dl(ds)+' '+(wsHoliExtra[ds]?'휴일':'평일')+'</b>';}).join(', '):'')+'</p>';
     h+='<div class="ws-card"><h3>휴일 담당 매니저 · 센터장</h3><p class="ws-sub">토·일·공휴일별로 입력하면 종합현황과 엑셀에 표시됩니다 (입력 즉시 저장)</p>'+wsMgrHTML(B)+'</div>';
     h+='<div class="ws-card"><h3>종합현황</h3><p class="ws-sub">그룹별·센터 블록은 1.0 근무만, 센터별 합계는 반차(0.5) 포함 · 평일 공휴일은 휴일로 집계</p><div class="ws-scroll">'+wsModelHTML(wsModelSummary(B))+'</div></div>';
     h+='<div class="ws-card"><h3>근무일정</h3><p class="ws-sub">토·일·공휴일 칸을 클릭하면 출근(1.0) ↔ 해제를 바꿀 수 있습니다 (보라 테두리 = 수동 변경)</p>';
@@ -4227,6 +4260,9 @@ function wsClearOverrides(){
     Object.keys(wsOverrides).forEach(function(ds){if(ds.slice(0,7)===attendanceMonth)delete wsOverrides[ds];});
     wsPersist('wsOverrides',wsOverrides);wsRender();
 }
+document.addEventListener('click',function(e){
+    var hd=e.target.closest&&e.target.closest('#wsRoot td.ws-hd');if(hd){wsToggleHoliday(hd.dataset.hd);return;}
+});
 document.addEventListener('click',function(e){
     var td=e.target.closest&&e.target.closest('#wsSchedWrap td.ws-tg');if(!td||!_wsLast)return;
     var ds=td.dataset.ds,nm=td.dataset.nm;
