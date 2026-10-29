@@ -4384,7 +4384,7 @@ async function wsDownloadExcel(){
         var blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
         var fd=B.M.fileDate?B.M.fileDate.slice(5,7)+B.M.fileDate.slice(8,10):'';
         var a=document.createElement('a');a.href=URL.createObjectURL(blob);
-        a.download='뇌새김 '+B.M.m+'월 근무현황파일'+(fd?'_'+fd:'')+'_종합.xlsx';
+        a.download='뇌새김 '+B.M.m+'월 근무현황파일'+(fd?'_'+fd:'')+'_종합_v6.xlsx';
         document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
         updateLoading(100,'완료!');
     }catch(err){alert('엑셀 생성 오류: '+err.message);console.error(err);}
