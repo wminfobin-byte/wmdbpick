@@ -3866,7 +3866,7 @@ function wsParseVal(raw){
     if(/대체\s*휴무/.test(s))return{v:s,k:'yellow'};
     for(var i=0;i<WS_BLUE.length;i++)if(s.indexOf(WS_BLUE[i])>=0)return{v:s,k:'blue'};
     if(/톡이즈/.test(s))return{v:s,k:'purple'};
-    if(/출근|지각/.test(s))return{v:1,k:''};
+    if(/출근|지각|조퇴/.test(s))return{v:1,k:''}; // 지각 10분·20분·20분 초과, 조퇴도 출근 1.0
     return{v:s,k:''};
 }
 function wsFileDate(){var f=(attendanceFiles&&attendanceFiles[0])||'';var m=f.match(/(\d{4})(\d{2})(\d{2})/);return m?m[1]+'-'+m[2]+'-'+m[3]:'';}
