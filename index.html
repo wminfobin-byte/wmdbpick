@@ -4404,9 +4404,10 @@ function wsHistAdd(people,fd){
     people.forEach(function(p){
         if(p._retired)return;
         var nm=wsName(p.name);if(!nm)return;
-        var join=wsJoinDs(p.joinDate),key=nm+'|'+join,e=wsHist.people[key];
+        var join=wsJoinDs(p.joinDate),key=nm,e=wsHist.people[key]; // CMS 이름은 동명이인이 B 등으로 구분돼 있어 이름이 키
         var a={department:String(p.department||'').trim(),group:String(p.group||'').trim(),center:String(p.center||'').trim(),rc:wsRC(p.name)};
         if(!e){e=wsHist.people[key]={name:nm,join:join,first:fd,last:fd,segs:[]};ch=true;}
+        if(join&&e.join!==join){e.join=join;ch=true;}
         if(fd>e.last){e.last=fd;ch=true;}
         if(fd<e.first){e.first=fd;ch=true;}
         // 마지막 근태 기록일 (주말 출근은 미리 등록되므로 파일 날짜보다 뒤일 수 있음) → 퇴사 후에도 그날까지는 재적
@@ -4427,6 +4428,7 @@ function wsHistAdd(people,fd){
 }
 function wsHistSync(){
     var ch=false;
+    if(wsHist.people&&Object.keys(wsHist.people).some(function(k){return k.indexOf('|')>=0;})){wsHist={people:{},max:''};ch=true;} // 구버전 키(이름|입사일) 중복 정리 → 다시 쌓기
     if(!wsHist.people||!Object.keys(wsHist.people).length){ // 처음: 보관된 달 파일로 먼저 채움
         Object.keys(wsAttArchive).sort().forEach(function(ym){var a=wsAttArchive[ym];if(a&&a.people)ch=wsHistAdd(a.people,wsFileDs(a.file))||ch;});
     }
