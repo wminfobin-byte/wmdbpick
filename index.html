@@ -315,6 +315,12 @@
         table.ws-mgr th.ws-off{color:var(--slate-light);font-weight:500}
         table.ws-mgr input{width:140px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:4px;font-size:0.76rem;text-align:center}
         table.ws-mgr input:focus{outline:none;border-color:var(--blue)}
+        .ws-hs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
+        .ws-hs-cap{font-size:0.78rem;font-weight:700;color:var(--navy);margin-bottom:4px}
+        table.ws-hs{width:100%}
+        table.ws-hs td.ws-hs-0{color:#c0c4cc}
+        table.ws-hs td.ws-hs-diff{background:#fee2e2;color:#b91c1c;font-weight:700}
+        table.ws-hs tr.ws-hs-tot td,table.ws-hs tr.ws-hs-tot th{background:#f1f5f9;font-weight:700}
         .ws-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:0.72rem;color:var(--slate);margin-bottom:8px}
         .ws-legend span{display:inline-flex;align-items:center;gap:4px}
         .ws-legend i{display:inline-block;width:14px;height:10px;border:1px solid #999}
@@ -670,7 +676,7 @@ function applyAuthUI(){
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
 // 근무현황 탭: 휴일 담당 매니저/센터장 {'YYYY-MM-DD':{sudo:[3],jung:[2],head:[1]}}, 수동 출근 변경 {'YYYY-MM-DD':{'이름':1|''}}, 대상 센터
-var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}},wsMgrDir={};
+var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}},wsMgrDir={},wsAttArchive={};
 // 로컬 변경 추적 (localStorage에 영속화)
 var localDirty=localStorage.getItem('localDirty')==='1';
 var _suppressDirty=false;
@@ -856,7 +862,7 @@ async function loadFromStorage(onProgress){
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust'),idbGet('holidayClosed'),
-            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir')
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir'),idbGet('wsAttArchive')
         ]);
         if(results[12])wsManagers=results[12];
         if(results[13])wsOverrides=results[13];
@@ -864,6 +870,7 @@ async function loadFromStorage(onProgress){
         if(results[15])wsHoliExtra=results[15];
         if(results[16])wsRoster=results[16];
         if(results[17])wsMgrDir=results[17];
+        if(results[18])wsAttArchive=results[18];
         if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
@@ -1067,6 +1074,7 @@ async function handleAttendanceFile(file){
         attendanceData=r.people;attendanceMonth=r.month;attendanceFiles=[r.fileName];
         saveAttendance();
         wsUpdateRoster();
+        wsArchiveCurrent();
         updateLoading(90,'화면 업데이트 중...');
         await new Promise(function(r2){setTimeout(r2,30);});
         updateAll();updateModalUI();wsRender();
@@ -3604,7 +3612,7 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,wsAttArchive:wsAttArchive,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
         var wrapper=JSON.stringify({ts:syncTs,z:compressed});
@@ -3726,6 +3734,7 @@ async function loadFromJSON(){
             if(payload.wsHoliExtra)wsHoliExtra=payload.wsHoliExtra;
             if(payload.wsRoster)wsRoster=payload.wsRoster;
             if(payload.wsMgrDir)wsMgrDir=payload.wsMgrDir;
+            if(payload.wsAttArchive)wsAttArchive=payload.wsAttArchive;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3745,6 +3754,7 @@ async function loadFromJSON(){
                     await idbPut('wsHoliExtra',wsHoliExtra);
                     await idbPut('wsRoster',wsRoster);
                     await idbPut('wsMgrDir',wsMgrDir);
+                    await idbPut('wsAttArchive',wsAttArchive);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
@@ -4357,11 +4367,120 @@ function wsCopyReport(){
     var fb=function(){el.select();try{document.execCommand('copy');}catch(e){}done();};
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(el.value).then(done,fb);else fb();
 }
+// ---------- 휴일 근무 통계 (구 '뇌새김 상담원 휴무' 파일의 N15:U43 통계표) ----------
+// 근무일정(특근: 근태 + 붙여넣기·클릭 수동 변경) vs CMS 근태(근태파일 원본)를 등급별·그룹별 × 센터로 센다.
+// 월말·월초는 앞뒤 달을 같이 봐야 해서 달별 마지막 근태파일을 wsAttArchive에 보관 (최근 3개월, 동기화 포함)
+function wsArchiveCurrent(){
+    if(!attendanceMonth||!attendanceData.length)return;
+    var f=attendanceFiles[0]||'',cur=wsAttArchive[attendanceMonth];
+    var ppl=wsAllPeople().filter(function(p){return wsGroupOf(p);});
+    if(cur&&cur.file===f&&cur.people&&cur.people.length===ppl.length)return;
+    if(cur&&cur.file&&f&&cur.file>f)return; // 같은 달 더 옛날 파일이면 덮어쓰지 않음
+    wsAttArchive[attendanceMonth]={file:f,people:ppl.map(function(p){return{department:p.department,group:p.group,center:p.center,name:p.name,daily:p.daily,_retired:p._retired||''};})};
+    var ks=Object.keys(wsAttArchive).sort();while(ks.length>3)delete wsAttArchive[ks.shift()];
+    wsPersist('wsAttArchive',wsAttArchive);
+}
+function wsHsPeople(ym){
+    if(ym===attendanceMonth)return wsAllPeople().filter(function(p){return wsGroupOf(p);});
+    var a=wsAttArchive[ym];return a?a.people:[];
+}
+function wsHsDays(){
+    var out=[];
+    Object.keys(wsAttArchive).concat(attendanceMonth?[attendanceMonth]:[]).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).sort().forEach(function(ym){
+        var y=+ym.slice(0,4),m=+ym.slice(5,7),last=new Date(y,m,0).getDate();
+        for(var dd=1;dd<=last;dd++){
+            var dt=new Date(y,m-1,dd),ds=formatDate(dt),dow=dt.getDay();
+            if(dow===0||dow===6||wsIsHoliday(ds))out.push({ds:ds,ym:ym,dom:dd,mon:m,dow:dow,wkHol:dow!==0&&dow!==6});
+        }
+    });
+    return out;
+}
+var _wsHsDs='',_wsHsMode='work';
+function wsHsCalc(d,mode){
+    var cen=WS_CENTERS_DEFAULT,ov=wsOverrides[d.ds]||{},grades=['A','B','C','D'];
+    var mk=function(rows){var t={};rows.forEach(function(r){t[r]={};cen.forEach(function(c){t[r][c]=[];});});return t;};
+    var R={plan:{g:mk(grades.concat(['제2외국어','톡이즈'])),p:mk(['영어','제2외국어','톡이즈'])},cms:{g:mk(grades.concat(['제2외국어','톡이즈'])),p:mk(['영어','제2외국어','톡이즈'])}};
+    wsHsPeople(d.ym).forEach(function(p){
+        var c=String(p.center||'').trim(),g=wsGroupOf(p);if(!g||cen.indexOf(c)<0)return;
+        var nm=wsName(p.name),raw=p.daily?p.daily[d.dom]:'';
+        if(mode==='off'&&/퇴사/.test(String(raw||'')))return; // 퇴사자는 휴무 인원에서 제외
+        var cms=wsParseVal(raw).v===1,plan=Object.prototype.hasOwnProperty.call(ov,nm)?ov[nm]===1:cms;
+        if(mode==='off'){cms=!cms;plan=!plan;}
+        var gr=g==='영어'?classifyStaffGroup(p):g;
+        [['plan',plan],['cms',cms]].forEach(function(x){
+            if(!x[1])return;
+            if(R[x[0]].g[gr])R[x[0]].g[gr][c].push(nm);
+            R[x[0]].p[g][c].push(nm);
+        });
+    });
+    return R;
+}
+// 표 하나: rows × 센터 + 합계, 다른 쪽(o)과 숫자가 다르면 빨간 칸 + 이름 툴팁
+function wsHsTable(title,t,o,cls){
+    var cen=WS_CENTERS_DEFAULT,rows=Object.keys(t),tot={},h='<table class="ws-mgr ws-hs '+cls+'"><thead><tr><th>'+title+'</th>';
+    cen.forEach(function(c){h+='<th>'+c+'</th>';tot[c]=0;});h+='<th>합계</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+        var s=0;h+='<tr><th>'+r+'</th>';
+        cen.forEach(function(c){
+            var a=t[r][c],b=o[r][c],n=a.length;s+=n;tot[c]+=n;
+            var only=a.filter(function(x){return b.indexOf(x)<0;}),miss=b.filter(function(x){return a.indexOf(x)<0;});
+            var diff=only.length||miss.length;
+            var tip=diff?(only.length?'이 표에만: '+only.join(', '):'')+(only.length&&miss.length?' / ':'')+(miss.length?'반대 표에만: '+miss.join(', '):''):a.join(', ');
+            h+='<td class="'+(diff?'ws-hs-diff':'')+(n?'':' ws-hs-0')+'" title="'+wsEsc(tip)+'">'+n+'</td>';
+        });
+        h+='<td><b>'+s+'</b></td></tr>';
+    });
+    var gs=0;h+='<tr class="ws-hs-tot"><th>합계</th>';cen.forEach(function(c){gs+=tot[c];h+='<td>'+tot[c]+'</td>';});
+    return h+'<td>'+gs+'</td></tr></tbody></table>';
+}
+// 원본 시트 N15:U43과 같은 배치(TSV)로 복사 → 엑셀 N15에 그대로 붙여넣기
+function wsHsTSV(R){
+    var cen=WS_CENTERS_DEFAULT,lines=[];
+    var blk=function(lab,t){
+        lines.push([lab].concat(cen,['합계']).join('\t'));var tot=cen.map(function(){return 0;});
+        Object.keys(t).forEach(function(r){var v=cen.map(function(c,i){var n=t[r][c].length;tot[i]+=n;return n;});lines.push([r].concat(v,[v.reduce(function(a,b){return a+b;},0)]).join('\t'));});
+        lines.push(['합계'].concat(tot,[tot.reduce(function(a,b){return a+b;},0)]).join('\t'));
+    };
+    blk('특근파일',R.plan.g);lines.push('');blk('근태파일',R.cms.g);lines.push('');blk('특근파일',R.plan.p);lines.push('');blk('근태파일',R.cms.p);
+    return lines.join('\n');
+}
+function wsHsHTML(){
+    var days=wsHsDays();if(!days.length)return'';
+    var today=formatDate(new Date());
+    if(!_wsHsDs||!days.some(function(d){return d.ds===_wsHsDs;})){var up=days.filter(function(d){return d.ds>=today;});_wsHsDs=(up.length?up[0]:days[days.length-1]).ds;}
+    var d=days.find(function(x){return x.ds===_wsHsDs;}),mode=d.wkHol?_wsHsMode:'work',R=wsHsCalc(d,mode);
+    var lab=function(x){return x.mon+'/'+x.dom+'('+WS_DOW[x.dow]+')'+(x.wkHol?' 공휴일':'');};
+    var months=Object.keys(wsAttArchive).concat([attendanceMonth]).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).sort();
+    var h='<div class="ws-card"><h3>휴일 근무 통계</h3><p class="ws-sub">근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><select onchange="_wsHsDs=this.value;var y=window.scrollY;wsRender();window.scrollTo(0,y);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
+    var lastYm='';
+    days.forEach(function(x){if(x.ym!==lastYm){if(lastYm)h+='</optgroup>';h+='<optgroup label="'+x.mon+'월">';lastYm=x.ym;}h+='<option value="'+x.ds+'"'+(x.ds===_wsHsDs?' selected':'')+'>'+lab(x)+'</option>';});
+    h+='</optgroup></select>';
+    if(d.wkHol){
+        [['work','출근 인원 (평일공휴일출근)'],['off','휴무 인원 (평일공휴일휴무)']].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
+    }
+    h+='<button class="btn btn-primary" onclick="wsHsCopy()">표 복사 (N15:U43 배치)</button><span id="wsHsMsg" style="font-size:0.75rem;color:var(--green);"></span></div>';
+    var what=mode==='off'?'휴무':'출근';
+    h+='<div class="ws-hs-grid">';
+    h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('등급',R.plan.g,R.cms.g,'')+'</div>';
+    h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('등급',R.cms.g,R.plan.g,'')+'</div>';
+    h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('그룹',R.plan.p,R.cms.p,'')+'</div>';
+    h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('그룹',R.cms.p,R.plan.p,'')+'</div>';
+    h+='</div><textarea id="wsHsTSV" style="position:absolute;left:-9999px;top:0;" readonly>'+wsEsc(wsHsTSV(R))+'</textarea></div>';
+    return h;
+}
+function wsHsCopy(){
+    var el=document.getElementById('wsHsTSV');if(!el)return;
+    var done=function(){var m=document.getElementById('wsHsMsg');if(m){m.textContent='복사했습니다 — 엑셀 N15 칸에 붙여넣으세요';setTimeout(function(){m.textContent='';},2500);}};
+    var fb=function(){el.select();try{document.execCommand('copy');}catch(e){}done();};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(el.value).then(done,fb);else fb();
+}
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
     var tab=document.getElementById('tab-workstatus');
     if(!tab||!tab.classList.contains('active')){_wsLast=null;return;}
     var B=wsBuild();
+    if(B)wsArchiveCurrent();
     if(!B){root.innerHTML='<div class="empty-state" style="display:block;"><div style="font-size:3rem;">&#128197;</div><p>우측 상단 [데이터 업로드] → <b>근태보고</b> 파일을 올리면 종합현황·근무일정이 표시됩니다</p></div>';return;}
     var ovCnt=0;Object.keys(wsOverrides).forEach(function(ds){if(ds.slice(0,7)===attendanceMonth)ovCnt+=Object.keys(wsOverrides[ds]).length;});
     var elig=wsEligibleCenters(),act=B.centers;
@@ -4379,6 +4498,7 @@ function wsRender(){
     h+='<p class="ws-sub" style="margin:-4px 0 10px;">평일 공휴일은 공휴일 목록(대체공휴일 포함)으로 자동 판단합니다. 목록에 없는 임시공휴일·회사 휴무는 <b>표의 날짜 칸을 클릭</b>해 휴일로 지정/해제하세요.'+(man.length?' · 수동 지정: '+man.map(function(ds){return'<b>'+dl(ds)+' '+(wsHoliExtra[ds]?'휴일':'평일')+'</b>';}).join(', '):'')+'</p>';
     h+='<div class="ws-card"><h3>휴일 담당자</h3><p class="ws-sub">토·일·공휴일별로 입력하면 종합현황·엑셀·보고 문구에 표시됩니다 (입력 즉시 저장) · <b>"강동 강지연 매니저", "이영주 상무"</b>처럼 센터·직급을 한 번 같이 쓰면 기억해서 다음부터는 이름만 써도 됩니다</p>'+wsMgrHTML(B)+'<div style="margin-top:8px;"><button class="btn" style="background:#eef2ff;color:#3730a3;font-size:0.76rem;padding:4px 10px;" onclick="wsOpenDir()">담당자 명부 (직급) 보기·수정</button></div><div id="wsDirBox" style="display:none;margin-top:8px;"><p class="ws-sub">한 줄에 한 명: <b>이름 직급 [센터] [본인]</b> · 예) 김태연 책임 / 이영주 상무 / 정보빈 사원 본인 · 직급이 바뀌면 여기서 고치고 [저장] (동기화됨). 매니저 칸에서 직급이 없으면 \'매니저\'로 표시, 센터는 근태파일에서 자동으로 찾습니다</p><textarea id="wsDirText" rows="8" style="width:100%;max-width:420px;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:0.8rem;font-family:inherit;">'+wsEsc(wsDirLines())+'</textarea><div><button class="btn btn-primary" style="font-size:0.78rem;padding:4px 12px;" onclick="wsSaveDir()">저장</button></div></div></div>';
     h+=wsReportHTML(B);
+    h+=wsHsHTML();
     h+='<div class="ws-card"><h3>종합현황</h3><p class="ws-sub">그룹별·센터 블록은 1.0 근무만, 센터별 합계는 반차(0.5) 포함 · 평일 공휴일은 휴일로 집계</p><div class="ws-scroll">'+wsModelHTML(wsModelSummary(B))+'</div></div>';
     h+='<div class="ws-card"><h3>근무일정</h3><p class="ws-sub">토·일·공휴일 칸을 클릭하면 출근(1.0) ↔ 해제를 바꿀 수 있습니다 (보라 테두리 = 수동 변경)</p>';
     h+='<div class="ws-legend"><span><i style="background:#'+WS_C.half+'"></i>반차 0.5</span><span><i style="background:#'+WS_C.halfAbs+'"></i>오전/오후 결근 0.5</span><span><i style="background:#'+WS_C.blue+'"></i>연차·휴가·경조·공가·장기공석</span><span><i style="background:#'+WS_C.yellow+'"></i>대체휴무</span><span><i style="background:#'+WS_C.red+'"></i>결근·퇴사</span><span><i style="background:#'+WS_C.sat+'"></i>토요일</span><span><i style="background:#'+WS_C.hol+'"></i>평일 공휴일</span><span><i style="background:#'+WS_C.gray+'"></i>휴무</span></div>';
