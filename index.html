@@ -4489,7 +4489,7 @@ function wsHsCalc(d,mode){
 function wsHsTable(title,t,o,cls,enr){
     var cen=WS_CENTERS_DEFAULT,rows=Object.keys(t),tot={},h='<table class="ws-mgr ws-hs '+cls+'"><thead><tr><th>'+title+'</th>';
     cen.forEach(function(c){h+='<th>'+c+'</th>';tot[c]=0;});h+='<th>합계</th></tr></thead><tbody>';
-    if(enr){var es=0;h+='<tr class="ws-hs-enr"><th>재적</th>';cen.forEach(function(c){es+=enr[c].length;h+='<td>'+enr[c].length+'</td>';});h+='<td>'+es+'</td></tr>';}
+    if(enr){var es=0;h+='<tr class="ws-hs-enr"><th>재적</th>';cen.forEach(function(c){es+=enr[c].length;h+='<td title="'+wsEsc(enr[c].join(', '))+'">'+enr[c].length+'</td>';});h+='<td>'+es+'</td></tr>';}
 
     rows.forEach(function(r){
         var s=0;h+='<tr><th>'+r+'</th>';
