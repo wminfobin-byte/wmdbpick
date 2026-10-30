@@ -4470,7 +4470,7 @@ function wsHsCalc(d,mode){
     cen.forEach(function(c){R.enr[c]=[];});
     var daily={};wsHsPeople(d.ym).forEach(function(p){daily[wsName(p.name)]=p.daily||{};});
     wsHistAt(d.ds).forEach(function(p){
-        if(R.enr[p.rc])R.enr[p.rc].push(p.name); // 재적: (R_센터) 표시가 있는 전체 인원
+        if(R.enr[p.rc]&&p.department)R.enr[p.rc].push(p.name); // 재적: (R_센터) 표시가 있고 담당이 있는 인원 (담당 공란은 제외)
         var c=p.center,g=wsGroupOf(p);if(!g||cen.indexOf(c)<0)return;
         var nm=p.name,raw=(daily[nm]||{})[d.dom];
         if(mode==='off'&&/퇴사/.test(String(raw||'')))return; // 퇴사자는 휴무 인원에서 제외
@@ -4512,7 +4512,7 @@ function wsHsHTML(){
     var d=days.find(function(x){return x.ds===_wsHsDs;}),mode=d.wkHol?_wsHsMode:'work',R=wsHsCalc(d,mode);
     var lab=function(x){return x.mon+'/'+x.dom+'('+WS_DOW[x.dow]+')'+(x.wkHol?' 공휴일':'');};
     var months=Object.keys(wsAttArchive).concat([attendanceMonth]).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).sort();
-    var h='<div class="ws-card"><h3>휴일 근무 통계</h3><p class="ws-sub">근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있는 전체 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
+    var h='<div class="ws-card"><h3>휴일 근무 통계</h3><p class="ws-sub">근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있고 담당이 있는 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><select onchange="_wsHsDs=this.value;var y=window.scrollY;wsRender();window.scrollTo(0,y);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     var lastYm='';
     days.forEach(function(x){if(x.ym!==lastYm){if(lastYm)h+='</optgroup>';h+='<optgroup label="'+x.mon+'월">';lastYm=x.ym;}h+='<option value="'+x.ds+'"'+(x.ds===_wsHsDs?' selected':'')+'>'+lab(x)+'</option>';});
