@@ -320,6 +320,7 @@
         table.ws-hs{width:100%}
         table.ws-hs td.ws-hs-0{color:#c0c4cc}
         table.ws-hs td.ws-hs-diff{background:#fee2e2;color:#b91c1c;font-weight:700}
+        table.ws-hs tr.ws-hs-enr td,table.ws-hs tr.ws-hs-enr th{background:#e0e7ff;color:#1e3a8a;font-weight:700}
         table.ws-hs tr.ws-hs-tot td,table.ws-hs tr.ws-hs-tot th{background:#f1f5f9;font-weight:700}
         .ws-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:0.72rem;color:var(--slate);margin-bottom:8px}
         .ws-legend span{display:inline-flex;align-items:center;gap:4px}
@@ -676,7 +677,7 @@ function applyAuthUI(){
 var allData=[],uploadedFiles=[],schedules=[],charts={};
 var attendanceData=[],attendanceFiles=[],attendanceMonth='';
 // 근무현황 탭: 휴일 담당 매니저/센터장 {'YYYY-MM-DD':{sudo:[3],jung:[2],head:[1]}}, 수동 출근 변경 {'YYYY-MM-DD':{'이름':1|''}}, 대상 센터
-var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}},wsMgrDir={},wsAttArchive={};
+var wsManagers={},wsOverrides={},wsCenters=null,wsHoliExtra={},wsRoster={month:'',people:{}},wsMgrDir={},wsAttArchive={},wsHist={people:{},max:''};
 // 로컬 변경 추적 (localStorage에 영속화)
 var localDirty=localStorage.getItem('localDirty')==='1';
 var _suppressDirty=false;
@@ -862,7 +863,7 @@ async function loadFromStorage(onProgress){
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust'),idbGet('holidayClosed'),
-            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir'),idbGet('wsAttArchive')
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir'),idbGet('wsAttArchive'),idbGet('wsHist')
         ]);
         if(results[12])wsManagers=results[12];
         if(results[13])wsOverrides=results[13];
@@ -871,6 +872,7 @@ async function loadFromStorage(onProgress){
         if(results[16])wsRoster=results[16];
         if(results[17])wsMgrDir=results[17];
         if(results[18])wsAttArchive=results[18];
+        if(results[19])wsHist=results[19];
         if(results[0]&&results[0].length){allData=results[0].map(expandRecord);invalidateAgg();}
         if(results[1])uploadedFiles=results[1];
         if(results[2])attendanceData=results[2];
@@ -3612,7 +3614,7 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,wsAttArchive:wsAttArchive,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,wsAttArchive:wsAttArchive,wsHist:wsHist,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
         var wrapper=JSON.stringify({ts:syncTs,z:compressed});
@@ -3735,6 +3737,7 @@ async function loadFromJSON(){
             if(payload.wsRoster)wsRoster=payload.wsRoster;
             if(payload.wsMgrDir)wsMgrDir=payload.wsMgrDir;
             if(payload.wsAttArchive)wsAttArchive=payload.wsAttArchive;
+            if(payload.wsHist)wsHist=payload.wsHist;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3755,6 +3758,7 @@ async function loadFromJSON(){
                     await idbPut('wsRoster',wsRoster);
                     await idbPut('wsMgrDir',wsMgrDir);
                     await idbPut('wsAttArchive',wsAttArchive);
+                    await idbPut('wsHist',wsHist);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
@@ -4373,15 +4377,76 @@ function wsCopyReport(){
 function wsArchiveCurrent(){
     if(!attendanceMonth||!attendanceData.length)return;
     var f=attendanceFiles[0]||'',cur=wsAttArchive[attendanceMonth];
-    var ppl=wsAllPeople().filter(function(p){return wsGroupOf(p);});
+    wsHistSync();
+    var ppl=wsAllPeople();
     if(cur&&cur.file===f&&cur.people&&cur.people.length===ppl.length)return;
     if(cur&&cur.file&&f&&cur.file>f)return; // 같은 달 더 옛날 파일이면 덮어쓰지 않음
-    wsAttArchive[attendanceMonth]={file:f,people:ppl.map(function(p){return{department:p.department,group:p.group,center:p.center,name:p.name,daily:p.daily,_retired:p._retired||''};})};
+    wsAttArchive[attendanceMonth]={file:f,people:ppl.map(function(p){return{department:p.department,group:p.group,center:p.center,name:p.name,joinDate:p.joinDate||'',daily:p.daily,_retired:p._retired||''};})};
     var ks=Object.keys(wsAttArchive).sort();while(ks.length>3)delete wsAttArchive[ks.shift()];
     wsPersist('wsAttArchive',wsAttArchive);
 }
+// ---------- 인원 이력 (그날 기준 재적·통계용) ----------
+// wsHist.people[key] = {name, rc(이름의 (R_센터) 센터), join(입사일), first, last(처음·마지막으로 보인 파일 날짜), segs:[{from,department,group,center,rc}]}
+// 날짜 D 재적 = 입사일 ≤ D 이고 (최신 파일에 있음 또는 마지막으로 보인 파일 날짜 ≥ D). 센터·담당·등급은 D 시점 segs 값
+function wsRC(name){var m=String(name||'').match(/^\s*\(\s*R_([^)]+?)\s*\)/);return m?m[1].trim():'';}
+function wsJoinDs(v){
+    if(v===null||v===undefined||v==='')return'';
+    var d;
+    if(typeof v==='number')d=new Date(Date.UTC(1899,11,30)+v*864e5);
+    else d=new Date(v instanceof Date?v.getTime():v);
+    if(isNaN(d.getTime()))return'';
+    return formatDate(new Date(d.getTime()+12*36e5)); // 엑셀 날짜의 시간대 오차 보정
+}
+function wsFileDs(f){var m=String(f||'').match(/(\d{4})(\d{2})(\d{2})/);return m?m[1]+'-'+m[2]+'-'+m[3]:'';}
+function wsHistAdd(people,fd){
+    if(!fd||!people||!people.length)return false;
+    var ch=false;if(!wsHist.people)wsHist={people:{},max:''};
+    people.forEach(function(p){
+        if(p._retired)return;
+        var nm=wsName(p.name);if(!nm)return;
+        var join=wsJoinDs(p.joinDate),key=nm+'|'+join,e=wsHist.people[key];
+        var a={department:String(p.department||'').trim(),group:String(p.group||'').trim(),center:String(p.center||'').trim(),rc:wsRC(p.name)};
+        if(!e){e=wsHist.people[key]={name:nm,join:join,first:fd,last:fd,segs:[]};ch=true;}
+        if(fd>e.last){e.last=fd;ch=true;}
+        if(fd<e.first){e.first=fd;ch=true;}
+        // 마지막 근태 기록일 (주말 출근은 미리 등록되므로 파일 날짜보다 뒤일 수 있음) → 퇴사 후에도 그날까지는 재적
+        var ym=fd.slice(0,7),ld=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate(),act='';
+        Object.keys(p.daily||{}).forEach(function(k){var dd=+k,v=String(p.daily[k]==null?'':p.daily[k]).trim();if(!(dd>=1&&dd<=ld)||!v||v==='-'||/퇴사/.test(v))return;var x=ym+'-'+String(dd).padStart(2,'0');if(x>act)act=x;});
+        if(act>(e.act||'')){e.act=act;ch=true;}
+        var at=null;e.segs.forEach(function(s){if(s.from<=fd)at=s;});
+        var eq=function(x,y){return x.department===y.department&&x.group===y.group&&x.center===y.center&&x.rc===y.rc;};
+        if(!at||!eq(at,a)){ // 센터·담당·등급이 바뀐 날부터 새 구간
+            e.segs=e.segs.filter(function(s){return s.from!==fd;});
+            e.segs.push(Object.assign({from:fd},a));e.segs.sort(function(x,y){return x.from<y.from?-1:1;});
+            e.segs=e.segs.filter(function(s,i,arr){return i===0||!eq(arr[i-1],s);});
+            ch=true;
+        }
+    });
+    if(fd>(wsHist.max||'')){wsHist.max=fd;ch=true;}
+    return ch;
+}
+function wsHistSync(){
+    var ch=false;
+    if(!wsHist.people||!Object.keys(wsHist.people).length){ // 처음: 보관된 달 파일로 먼저 채움
+        Object.keys(wsAttArchive).sort().forEach(function(ym){var a=wsAttArchive[ym];if(a&&a.people)ch=wsHistAdd(a.people,wsFileDs(a.file))||ch;});
+    }
+    if(attendanceData.length)ch=wsHistAdd(attendanceData,wsFileDate())||ch;
+    if(ch)wsPersist('wsHist',wsHist);
+}
+function wsHistAt(ds){
+    var out=[],mx=wsHist.max||'';
+    Object.keys(wsHist.people||{}).forEach(function(k){
+        var e=wsHist.people[k];
+        if(e.join&&e.join>ds)return; // 그날 이후 입사
+        var lastIn=e.act&&e.act>e.last?e.act:e.last;
+        if(e.last!==mx&&lastIn<ds)return; // 그날 전에 파일에서 빠짐(퇴사)
+        var s=e.segs[0];e.segs.forEach(function(x){if(x.from<=ds)s=x;});
+        if(s)out.push({name:e.name,department:s.department,group:s.group,center:s.center,rc:s.rc});
+    });
+    return out;
+}
 function wsHsPeople(ym){
-    if(ym===attendanceMonth)return wsAllPeople().filter(function(p){return wsGroupOf(p);});
+    if(ym===attendanceMonth)return wsAllPeople();
     var a=wsAttArchive[ym];return a?a.people:[];
 }
 function wsHsDays(){
@@ -4399,10 +4464,13 @@ var _wsHsDs='',_wsHsMode='work';
 function wsHsCalc(d,mode){
     var cen=WS_CENTERS_DEFAULT,ov=wsOverrides[d.ds]||{},grades=['A','B','C','D'];
     var mk=function(rows){var t={};rows.forEach(function(r){t[r]={};cen.forEach(function(c){t[r][c]=[];});});return t;};
-    var R={plan:{g:mk(grades.concat(['제2외국어','톡이즈'])),p:mk(['영어','제2외국어','톡이즈'])},cms:{g:mk(grades.concat(['제2외국어','톡이즈'])),p:mk(['영어','제2외국어','톡이즈'])}};
-    wsHsPeople(d.ym).forEach(function(p){
-        var c=String(p.center||'').trim(),g=wsGroupOf(p);if(!g||cen.indexOf(c)<0)return;
-        var nm=wsName(p.name),raw=p.daily?p.daily[d.dom]:'';
+    var R={plan:{g:mk(grades.concat(['제2외국어','톡이즈'])),p:mk(['영어','제2외국어','톡이즈'])},cms:{g:mk(grades.concat(['제2외국어','톡이즈'])),p:mk(['영어','제2외국어','톡이즈'])},enr:{}};
+    cen.forEach(function(c){R.enr[c]=[];});
+    var daily={};wsHsPeople(d.ym).forEach(function(p){daily[wsName(p.name)]=p.daily||{};});
+    wsHistAt(d.ds).forEach(function(p){
+        if(R.enr[p.rc])R.enr[p.rc].push(p.name); // 재적: (R_센터) 표시가 있는 전체 인원
+        var c=p.center,g=wsGroupOf(p);if(!g||cen.indexOf(c)<0)return;
+        var nm=p.name,raw=(daily[nm]||{})[d.dom];
         if(mode==='off'&&/퇴사/.test(String(raw||'')))return; // 퇴사자는 휴무 인원에서 제외
         var cms=wsParseVal(raw).v===1,plan=Object.prototype.hasOwnProperty.call(ov,nm)?ov[nm]===1:cms;
         if(mode==='off'){cms=!cms;plan=!plan;}
@@ -4415,10 +4483,12 @@ function wsHsCalc(d,mode){
     });
     return R;
 }
-// 표 하나: rows × 센터 + 합계, 다른 쪽(o)과 숫자가 다르면 빨간 칸 + 이름 툴팁
-function wsHsTable(title,t,o,cls){
+// 표 하나: 재적 줄 + rows × 센터 + 합계, 다른 쪽(o)과 숫자가 다르면 빨간 칸 + 이름 툴팁
+function wsHsTable(title,t,o,cls,enr){
     var cen=WS_CENTERS_DEFAULT,rows=Object.keys(t),tot={},h='<table class="ws-mgr ws-hs '+cls+'"><thead><tr><th>'+title+'</th>';
     cen.forEach(function(c){h+='<th>'+c+'</th>';tot[c]=0;});h+='<th>합계</th></tr></thead><tbody>';
+    if(enr){var es=0;h+='<tr class="ws-hs-enr"><th>재적</th>';cen.forEach(function(c){es+=enr[c].length;h+='<td>'+enr[c].length+'</td>';});h+='<td>'+es+'</td></tr>';}
+
     rows.forEach(function(r){
         var s=0;h+='<tr><th>'+r+'</th>';
         cen.forEach(function(c){
@@ -4440,7 +4510,7 @@ function wsHsHTML(){
     var d=days.find(function(x){return x.ds===_wsHsDs;}),mode=d.wkHol?_wsHsMode:'work',R=wsHsCalc(d,mode);
     var lab=function(x){return x.mon+'/'+x.dom+'('+WS_DOW[x.dow]+')'+(x.wkHol?' 공휴일':'');};
     var months=Object.keys(wsAttArchive).concat([attendanceMonth]).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).sort();
-    var h='<div class="ws-card"><h3>휴일 근무 통계</h3><p class="ws-sub">근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
+    var h='<div class="ws-card"><h3>휴일 근무 통계</h3><p class="ws-sub">근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있는 전체 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><select onchange="_wsHsDs=this.value;var y=window.scrollY;wsRender();window.scrollTo(0,y);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     var lastYm='';
     days.forEach(function(x){if(x.ym!==lastYm){if(lastYm)h+='</optgroup>';h+='<optgroup label="'+x.mon+'월">';lastYm=x.ym;}h+='<option value="'+x.ds+'"'+(x.ds===_wsHsDs?' selected':'')+'>'+lab(x)+'</option>';});
@@ -4451,10 +4521,10 @@ function wsHsHTML(){
     h+='</div>';
     var what=mode==='off'?'휴무':'출근';
     h+='<div class="ws-hs-grid">';
-    h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('등급',R.plan.g,R.cms.g,'')+'</div>';
-    h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('등급',R.cms.g,R.plan.g,'')+'</div>';
-    h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('그룹',R.plan.p,R.cms.p,'')+'</div>';
-    h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('그룹',R.cms.p,R.plan.p,'')+'</div>';
+    h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('등급',R.plan.g,R.cms.g,'',R.enr)+'</div>';
+    h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('등급',R.cms.g,R.plan.g,'',R.enr)+'</div>';
+    h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('그룹',R.plan.p,R.cms.p,'',R.enr)+'</div>';
+    h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('그룹',R.cms.p,R.plan.p,'',R.enr)+'</div>';
     h+='</div></div>';
     return h;
 }
