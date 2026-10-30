@@ -4457,12 +4457,15 @@ function wsHsDays(){
         var y=+ym.slice(0,4),m=+ym.slice(5,7),last=new Date(y,m,0).getDate();
         for(var dd=1;dd<=last;dd++){
             var dt=new Date(y,m-1,dd),ds=formatDate(dt),dow=dt.getDay();
-            if(dow===0||dow===6||wsIsHoliday(ds))out.push({ds:ds,ym:ym,dom:dd,mon:m,dow:dow,wkHol:dow!==0&&dow!==6});
+            var hol=dow===0||dow===6||wsIsHoliday(ds);
+            out.push({ds:ds,ym:ym,dom:dd,mon:m,dow:dow,hol:hol,wkHol:hol&&dow!==0&&dow!==6,wkDay:dow!==0&&dow!==6});
         }
     });
     return out;
 }
 var _wsHsDs='',_wsHsMode='work';
+// 날짜 선택: 평일은 휴무 통계, 휴일은 출근 통계가 기본
+function wsHsPick(ds){var d=wsHsDays().find(function(x){return x.ds===ds;});if(!d){alert('근태파일이 보관된 달의 날짜만 볼 수 있습니다');wsRender();return;}_wsHsDs=ds;_wsHsMode=d.wkDay&&!d.hol?'off':'work';var y=window.scrollY;wsRender();window.scrollTo(0,y);}
 function wsHsCalc(d,mode){
     var cen=WS_CENTERS_DEFAULT,ov=wsOverrides[d.ds]||{},grades=['A','B','C','D'];
     var mk=function(rows){var t={};rows.forEach(function(r){t[r]={};cen.forEach(function(c){t[r][c]=[];});});return t;};
@@ -4508,17 +4511,15 @@ function wsHsTable(title,t,o,cls,enr){
 function wsHsHTML(){
     var days=wsHsDays();if(!days.length)return'';
     var today=formatDate(new Date());
-    if(!_wsHsDs||!days.some(function(d){return d.ds===_wsHsDs;})){var up=days.filter(function(d){return d.ds>=today;});_wsHsDs=(up.length?up[0]:days[days.length-1]).ds;}
-    var d=days.find(function(x){return x.ds===_wsHsDs;}),mode=d.wkHol?_wsHsMode:'work',R=wsHsCalc(d,mode);
-    var lab=function(x){return x.mon+'/'+x.dom+'('+WS_DOW[x.dow]+')'+(x.wkHol?' 공휴일':'');};
+    if(!_wsHsDs||!days.some(function(d){return d.ds===_wsHsDs;})){var hd=days.filter(function(d){return d.hol;}),up=hd.filter(function(d){return d.ds>=today;});_wsHsDs=(up.length?up[0]:(hd.length?hd[hd.length-1]:days[days.length-1])).ds;_wsHsMode='work';}
+    var d=days.find(function(x){return x.ds===_wsHsDs;}),mode=d.wkDay?_wsHsMode:'work',R=wsHsCalc(d,mode);
+    var lab=function(x){return x.mon+'/'+x.dom+'('+WS_DOW[x.dow]+')'+(x.wkHol?' 공휴일':(x.hol?' 휴일':' 평일'));};
     var months=Object.keys(wsAttArchive).concat([attendanceMonth]).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).sort();
-    var h='<div class="ws-card"><h3>휴일 근무 통계</h3><p class="ws-sub">근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있고 담당이 있는 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
-    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><select onchange="_wsHsDs=this.value;var y=window.scrollY;wsRender();window.scrollTo(0,y);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
-    var lastYm='';
-    days.forEach(function(x){if(x.ym!==lastYm){if(lastYm)h+='</optgroup>';h+='<optgroup label="'+x.mon+'월">';lastYm=x.ym;}h+='<option value="'+x.ds+'"'+(x.ds===_wsHsDs?' selected':'')+'>'+lab(x)+'</option>';});
-    h+='</optgroup></select>';
-    if(d.wkHol){
-        [['work','출근 인원 (평일공휴일출근)'],['off','휴무 인원 (평일공휴일휴무)']].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
+    var h='<div class="ws-card"><h3>근무 통계 (휴일·평일)</h3><p class="ws-sub">날짜를 고르면 그날 통계가 나옵니다 · 평일은 기본으로 <b>휴무 인원</b>(출근 1.0이 아닌 사람: 연차·휴가·반차 등, 퇴사 제외) · 근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있고 담당이 있는 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><input type="date" value="'+_wsHsDs+'" min="'+days[0].ds+'" max="'+days[days.length-1].ds+'" onchange="if(this.value)wsHsPick(this.value);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
+    h+='<span style="font-size:0.85rem;color:var(--gray-600);">'+lab(d)+'</span>';
+    if(d.wkDay){
+        [['work','출근 인원'+(d.wkHol?' (평일공휴일출근)':'')],['off','휴무 인원'+(d.wkHol?' (평일공휴일휴무)':'')]].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
     }
     h+='</div>';
     var what=mode==='off'?'휴무':'출근';
