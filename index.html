@@ -4433,17 +4433,6 @@ function wsHsTable(title,t,o,cls){
     var gs=0;h+='<tr class="ws-hs-tot"><th>합계</th>';cen.forEach(function(c){gs+=tot[c];h+='<td>'+tot[c]+'</td>';});
     return h+'<td>'+gs+'</td></tr></tbody></table>';
 }
-// 원본 시트 N15:U43과 같은 배치(TSV)로 복사 → 엑셀 N15에 그대로 붙여넣기
-function wsHsTSV(R){
-    var cen=WS_CENTERS_DEFAULT,lines=[];
-    var blk=function(lab,t){
-        lines.push([lab].concat(cen,['합계']).join('\t'));var tot=cen.map(function(){return 0;});
-        Object.keys(t).forEach(function(r){var v=cen.map(function(c,i){var n=t[r][c].length;tot[i]+=n;return n;});lines.push([r].concat(v,[v.reduce(function(a,b){return a+b;},0)]).join('\t'));});
-        lines.push(['합계'].concat(tot,[tot.reduce(function(a,b){return a+b;},0)]).join('\t'));
-    };
-    blk('특근파일',R.plan.g);lines.push('');blk('근태파일',R.cms.g);lines.push('');blk('특근파일',R.plan.p);lines.push('');blk('근태파일',R.cms.p);
-    return lines.join('\n');
-}
 function wsHsHTML(){
     var days=wsHsDays();if(!days.length)return'';
     var today=formatDate(new Date());
@@ -4459,21 +4448,15 @@ function wsHsHTML(){
     if(d.wkHol){
         [['work','출근 인원 (평일공휴일출근)'],['off','휴무 인원 (평일공휴일휴무)']].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
     }
-    h+='<button class="btn btn-primary" onclick="wsHsCopy()">표 복사 (N15:U43 배치)</button><span id="wsHsMsg" style="font-size:0.75rem;color:var(--green);"></span></div>';
+    h+='</div>';
     var what=mode==='off'?'휴무':'출근';
     h+='<div class="ws-hs-grid">';
     h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('등급',R.plan.g,R.cms.g,'')+'</div>';
     h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('등급',R.cms.g,R.plan.g,'')+'</div>';
     h+='<div><div class="ws-hs-cap">근무일정 (특근) · '+what+'</div>'+wsHsTable('그룹',R.plan.p,R.cms.p,'')+'</div>';
     h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('그룹',R.cms.p,R.plan.p,'')+'</div>';
-    h+='</div><textarea id="wsHsTSV" style="position:absolute;left:-9999px;top:0;" readonly>'+wsEsc(wsHsTSV(R))+'</textarea></div>';
+    h+='</div></div>';
     return h;
-}
-function wsHsCopy(){
-    var el=document.getElementById('wsHsTSV');if(!el)return;
-    var done=function(){var m=document.getElementById('wsHsMsg');if(m){m.textContent='복사했습니다 — 엑셀 N15 칸에 붙여넣으세요';setTimeout(function(){m.textContent='';},2500);}};
-    var fb=function(){el.select();try{document.execCommand('copy');}catch(e){}done();};
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(el.value).then(done,fb);else fb();
 }
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
