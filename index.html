@@ -322,6 +322,9 @@
         table.ws-hs td.ws-hs-diff{background:#fee2e2;color:#b91c1c;font-weight:700}
         table.ws-hs tr.ws-hs-enr td,table.ws-hs tr.ws-hs-enr th{background:#e0e7ff;color:#1e3a8a;font-weight:700}
         table.ws-hs tr.ws-hs-tot td,table.ws-hs tr.ws-hs-tot th{background:#f1f5f9;font-weight:700}
+        table.ws-hs td,table.ws-hs th{user-select:none;-webkit-user-select:none;cursor:cell}
+        table.ws-hs .ws-sel{background:#bfdbfe !important;outline:1px solid #2563eb;outline-offset:-1px}
+        table.ws-hs .ws-sel.ws-copied{background:#bbf7d0 !important;outline-color:#16a34a}
         .ws-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:0.72rem;color:var(--slate);margin-bottom:8px}
         .ws-legend span{display:inline-flex;align-items:center;gap:4px}
         .ws-legend i{display:inline-block;width:14px;height:10px;border:1px solid #999}
@@ -4508,6 +4511,41 @@ function wsHsTable(title,t,o,cls,enr){
     var gs=0;h+='<tr class="ws-hs-tot"><th>합계</th>';cen.forEach(function(c){gs+=tot[c];h+='<td>'+tot[c]+'</td>';});
     return h+'<td>'+gs+'</td></tr></tbody></table>';
 }
+// 근무 통계 표: 엑셀처럼 드래그(또는 Shift+클릭)로 셀 범위 선택 → Ctrl+C 로 탭 구분 복사 (엑셀에 그대로 붙여넣기)
+var _wsSel=null;
+(function(){
+    function cellOf(e){var c=e.target.closest&&e.target.closest('table.ws-hs td, table.ws-hs th');return c?{tb:c.closest('table'),r:c.parentNode.rowIndex,c:c.cellIndex}:null;}
+    function paint(){
+        document.querySelectorAll('table.ws-hs .ws-sel').forEach(function(x){x.classList.remove('ws-sel');});
+        if(!_wsSel||!document.body.contains(_wsSel.tb))return;
+        var s=_wsSel,r0=Math.min(s.r0,s.r1),r1=Math.max(s.r0,s.r1),c0=Math.min(s.c0,s.c1),c1=Math.max(s.c0,s.c1);
+        for(var r=r0;r<=r1;r++){var row=s.tb.rows[r];for(var c=c0;c<=c1;c++){if(row&&row.cells[c])row.cells[c].classList.add('ws-sel');}}
+    }
+    var drag=false;
+    document.addEventListener('mousedown',function(e){
+        var p=cellOf(e);
+        if(!p){if(_wsSel){_wsSel=null;paint();}return;}
+        if(e.button!==0)return;
+        if(e.shiftKey&&_wsSel&&_wsSel.tb===p.tb){_wsSel.r1=p.r;_wsSel.c1=p.c;}
+        else _wsSel={tb:p.tb,r0:p.r,c0:p.c,r1:p.r,c1:p.c};
+        drag=true;paint();e.preventDefault();
+    });
+    document.addEventListener('mouseover',function(e){
+        if(!drag||!_wsSel)return;var p=cellOf(e);
+        if(p&&p.tb===_wsSel.tb&&(p.r!==_wsSel.r1||p.c!==_wsSel.c1)){_wsSel.r1=p.r;_wsSel.c1=p.c;paint();}
+    });
+    document.addEventListener('mouseup',function(){drag=false;});
+    document.addEventListener('copy',function(e){
+        if(!_wsSel||!document.body.contains(_wsSel.tb))return;
+        var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return;
+        var s=_wsSel,r0=Math.min(s.r0,s.r1),r1=Math.max(s.r0,s.r1),c0=Math.min(s.c0,s.c1),c1=Math.max(s.c0,s.c1),out=[];
+        for(var r=r0;r<=r1;r++){var row=s.tb.rows[r],v=[];for(var c=c0;c<=c1;c++)v.push(row&&row.cells[c]?row.cells[c].textContent.trim():'');out.push(v.join('\t'));}
+        e.clipboardData.setData('text/plain',out.join('\r\n'));e.preventDefault();
+        var sel=s.tb.querySelectorAll('.ws-sel');sel.forEach(function(x){x.classList.add('ws-copied');});
+        setTimeout(function(){sel.forEach(function(x){x.classList.remove('ws-copied');});},500);
+    });
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&_wsSel){_wsSel=null;paint();}});
+})();
 function wsHsHTML(){
     var days=wsHsDays();if(!days.length)return'';
     var today=formatDate(new Date());
@@ -4515,7 +4553,7 @@ function wsHsHTML(){
     var d=days.find(function(x){return x.ds===_wsHsDs;}),mode=d.wkDay?_wsHsMode:'work',R=wsHsCalc(d,mode);
     var lab=function(x){return x.mon+'/'+x.dom+'('+WS_DOW[x.dow]+')'+(x.wkHol?' 공휴일':(x.hol?' 휴일':' 평일'));};
     var months=Object.keys(wsAttArchive).concat([attendanceMonth]).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).sort();
-    var h='<div class="ws-card"><h3>근무 통계 (휴일·평일)</h3><p class="ws-sub">날짜를 고르면 그날 통계가 나옵니다 · 평일은 기본으로 <b>휴무 인원</b>(출근 1.0이 아닌 사람: 연차·휴가·반차 등, 퇴사 제외) · 근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있고 담당이 있는 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
+    var h='<div class="ws-card"><h3>근무 통계 (휴일·평일)</h3><p class="ws-sub">날짜를 고르면 그날 통계가 나옵니다 · 평일은 기본으로 <b>휴무 인원</b>(출근 1.0이 아닌 사람: 연차·휴가·반차 등, 퇴사 제외) · 근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있고 담당이 있는 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · <b>복사</b>: 엑셀처럼 칸을 드래그(또는 클릭 후 Shift+클릭)로 선택 → Ctrl+C → 엑셀에 붙여넣기 · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><input type="date" value="'+_wsHsDs+'" min="'+days[0].ds+'" max="'+days[days.length-1].ds+'" onchange="if(this.value)wsHsPick(this.value);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     h+='<span style="font-size:0.85rem;color:var(--gray-600);">'+lab(d)+'</span>';
     if(d.wkDay){
