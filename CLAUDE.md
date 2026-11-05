@@ -85,6 +85,14 @@ WM DB 유입 예상 대시보드 — 영업관리팀의 차주 DB 유입량 예�
 - `workingDayToggle=[true,false,true,true,true,true,true]` — 일요일 비분배 (요일 단위 수동 토글)
 - `KR_HOLIDAYS` — 한국 공휴일 다년치(2024~2026). 매년 갱신 필요
 
+### 주간 예상표 (양식) / 1인 분배 (`ys*` 함수군)
+- 차주 예상 [주간 예상표 (양식)] 버튼 → `downloadYesangExcel()`: `yesang_template.xlsx`(원본 `N월 N주 계산 - 예상.xlsx`의 DB 예상안 시트 + D등급 블록)를 ExcelJS(CDN 지연 로드)로 열어 **입력 칸만** 채운다. 서식·수식은 양식 그대로. 파일명 = 월요일 기준 `N월 N주 계산 - 예상.xlsx`
+- 양식 행 위치: A 5~11, B 12~18, C 19~25, **D 26~32**, 제2외 33~35, 총원 37 (원본 J26:AC41을 7행 내림). 뇌새김 타임보드(31행)는 17시 이후 방송을 다음날로 (DIST_CUTOFF_HOUR와 동일). 양식을 바꾸면 `downloadYesangExcel`의 셀 주소도 같이 고칠 것
+- 인원: 근무 통계의 근무일정(특근) `wsHsCalc().plan.g` — 토·일 = 출근 인원, 평일 = 휴무 인원, 기준인원 K = 첫 평일의 출근+휴무. 분배 인원 n = 토·일 출근 / 평일 K − 휴무 (엑셀 수식과 동일)
+- 1인 분배 `ysAllocate` (2026년 7~10월 수기 예상표 15주 분석): 하루 1인 총량 A·B·C 동일, D = 70%(`GROUP_WEIGHT`). 분배량 = 누적 예상 − 누적 분배(일요일·휴무일 유입과 반올림 오차는 다음 근무일로). 받는 계열 `YS_ELIG` 평일 A0~5/B1~5/C3~5/D4~5, 휴일(토·일·공휴일) A0~5/B1~5/C·D2~5. 평일은 학습 비중, 휴일은 범위 안 균등에서 출발해 IPF로 등급 총량·계열 예상을 동시에 맞춘 뒤 정수 반올림. 제2외국어는 상위/하위 비중 ÷ 인원
+- 학습 `yesangLearn`(IDB·동기화): 계열별 분배 설정 > [예상 파일 올려 학습]으로 수기 수정한 예상 파일을 올리면 평일 등급별 계열 비중을 다시 계산 (`ysLearnFromSheet`: J열 `X등급` 블록 탐색, 평일·공휴일 아닌 날만). 없으면 `YS_SHARE_DEFAULT`
+- 화면 1인 분배·공유 탭·통합 엑셀 '등급별 1인 분배'도 같은 `lastPredData.ys`를 쓴다. 구 `tierConfig.groups[].basis`(등급별 계열 기준 1인당)는 더 이상 쓰지 않음 (UI 숨김)
+
 ### 평일 공휴일 처리 (차주 예상)
 - `holidayClosed` — 날짜 단위 휴무 override (`{'YYYY-MM-DD':true}`). IndexedDB `holidayClosed`에 영구 저장
 - **평일(월~금) 공휴일은 기본 영업(ON)**, `holidayClosed`에 등록된 날만 휴무. 토/일 공휴일은 기존 `workingDayToggle` 따름. 분배일 토글 UI는 평일 공휴일에 한해 날짜 단위(`holidayClosed`)를 토글

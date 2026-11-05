@@ -386,6 +386,7 @@
         <div id="predictionContent" style="display:none;">
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;">
                 <button class="btn-download" style="background:linear-gradient(135deg,#1b5e20,#43a047);box-shadow:0 2px 8px rgba(27,94,32,0.3);" onclick="downloadPredExcel()">엑셀 통합 다운로드</button>
+                <button class="btn-download" style="background:linear-gradient(135deg,#e65100,#ffa726);box-shadow:0 2px 8px rgba(230,81,0,0.3);" onclick="downloadYesangExcel()" title="주간예상 비교파일 양식(DB 예상안) 그대로, D등급 포함">주간 예상표 (양식)</button>
                 <button class="btn-download" style="background:linear-gradient(135deg,#0d47a1,#42a5f5);box-shadow:0 2px 8px rgba(13,71,161,0.3);" onclick="captureTotalPred()">종합 예상 PNG 캡쳐</button>
             </div>
             <p style="color:#666;font-size:0.85rem;margin-bottom:12px;" id="predWeekLabel"></p>
@@ -446,16 +447,17 @@
                 <div class="collapsible-body" id="tierBody">
                     <p class="section-sub">계열별 비중 (%)</p>
                     <div class="tier-grid" id="tierWeightInputs"></div>
-                    <p class="section-sub">등급별 계열 기준 (1인당)</p>
-                    <div class="group-config" id="groupConfigDisplay"></div>
+                    <p class="section-sub">1인 분배 학습 (등급별 계열 비중)</p>
+                    <div id="ysLearnBox" style="margin-bottom:12px;"></div>
+                    <div class="group-config" id="groupConfigDisplay" style="display:none;"></div>
                     <p class="section-sub">제2외국어 계열별 비중 (%)</p>
                     <div style="display:flex;gap:16px;margin-bottom:10px;align-items:center;">
                         <label style="font-size:0.82rem;">상위 (0~2계열) <input type="number" id="secWeightUpper" value="46" min="0" max="100" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="syncSecWeights('upper');saveTierConfig()">%</label>
                         <label style="font-size:0.82rem;">하위 (3~5계열) <input type="number" id="secWeightLower" value="54" min="0" max="100" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="syncSecWeights('lower');saveTierConfig()">%</label>
                         <span id="secWeightTotal" style="font-weight:600;font-size:0.82rem;color:#2e7d32;">합계: 100%</span>
                     </div>
-                    <p class="section-sub">제2외국어 분배 기준 (1인당)</p>
-                    <div style="display:flex;gap:16px;margin-bottom:10px;">
+                    <p class="section-sub" style="display:none;">제2외국어 분배 기준 (1인당)</p>
+                    <div style="display:none;gap:16px;margin-bottom:10px;">
                         <label style="font-size:0.82rem;">상위 <input type="number" id="secBasisUpper" value="20" min="0" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="saveTierConfig()"></label>
                         <label style="font-size:0.82rem;">하위 <input type="number" id="secBasisLower" value="25" min="0" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="saveTierConfig()"></label>
                     </div>
@@ -866,8 +868,9 @@ async function loadFromStorage(onProgress){
             idbGet('tierConfig'),idbGet('workingDays'),idbGet('schedules'),
             idbGet('actualInflowData'),idbGet('actualInflowFiles'),
             idbGet('manualAdjust'),idbGet('holidayClosed'),
-            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir'),idbGet('wsAttArchive'),idbGet('wsHist')
+            idbGet('wsManagers'),idbGet('wsOverrides'),idbGet('wsCenters'),idbGet('wsHoliExtra'),idbGet('wsRoster'),idbGet('wsMgrDir'),idbGet('wsAttArchive'),idbGet('wsHist'),idbGet('yesangLearn')
         ]);
+        if(results[20])yesangLearn=results[20];
         if(results[12])wsManagers=results[12];
         if(results[13])wsOverrides=results[13];
         if(results[14])wsCenters=results[14];
@@ -1356,23 +1359,20 @@ function buildActualGroupDist(acS,todayStr){
     var talkTotal=acS.byLang['톡이즈']||0;
     // 영어 그룹별 분배
     if(engTotal>0){
-        var groupKeys=Object.keys(tierConfig.groups);
+        var groupKeys=YS_GRADES;
         var weightedTotal=0;
         groupKeys.forEach(function(g){weightedTotal+=(getWorkingStaffByGroupForDate(todayStr,g)||0)*(GROUP_WEIGHT[g]||1);});
         if(weightedTotal>0){
             gh+='<h4>등급별 실제 유입 분배</h4>';
-            var shareBasisSum={};
-            groupKeys.forEach(function(g){
-                shareBasisSum[g]=tierConfig.groups[g].basis.reduce(function(a,b){return a+b;},0)||1;
-            });
+            // 계열 비중: 평일 = 학습한 등급별 비중, 휴일 = 받는 계열 안 균등 (주간 예상표 규칙과 동일)
+            var _td=new Date(todayStr+'T00:00:00'),_hol=_td.getDay()===0||_td.getDay()===6||KR_HOLI_SET.has(todayStr),_el=YS_ELIG[_hol?'hol':'wk'],_sh=ysShares();
             gh+='<table class="share-table"><thead><tr><th>등급</th><th>계열</th><th>1인당 분배 가능 수량</th></tr></thead><tbody>';
             groupKeys.forEach(function(g){
-                var cfg=tierConfig.groups[g];
                 var myStaff=getWorkingStaffByGroupForDate(todayStr,g)||0;
                 var ppTotal=myStaff>0?Math.round((engTotal/weightedTotal)*(GROUP_WEIGHT[g]||1)):0;
-                var grpTotal=0,isFirst=true;
-                cfg.tiers.forEach(function(ti,bi){
-                    var basisRatio=cfg.basis[bi]/shareBasisSum[g];
+                var grpTotal=0,isFirst=true,_den=ysSum(_el[g].map(function(t){return _sh[g][t];}))||1;
+                _el[g].forEach(function(ti){
+                    var basisRatio=_hol?1/_el[g].length:_sh[g][ti]/_den;
                     var pp=Math.round(ppTotal*basisRatio);
                     grpTotal+=pp;
                     gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'등급</strong><br><span style="font-size:0.72rem;color:#999;">근무 '+myStaff+'명</span>':'')+'</td>';
@@ -2655,8 +2655,9 @@ function renderTierConfigUI(){
     document.getElementById('secBasisLower').value=tierConfig.secLower;
     document.getElementById('secWeightUpper').value=tierConfig.secWeightUpper;
     document.getElementById('secWeightLower').value=tierConfig.secWeightLower;
+    ysRenderLearnBox();
     var gc=document.getElementById('groupConfigDisplay');
-    gc.innerHTML=Object.keys(tierConfig.groups).map(function(g){var cfg=tierConfig.groups[g];if(g==='D'){return'<div class="group-card"><h4>D등급</h4><div style="font-size:0.78rem;color:#666;line-height:1.5;padding:6px 2px;">계열 기준 설정 불필요<br><strong style="color:#1a237e;">계열별 C등급의 70%</strong><br>자동 적용</div></div>';}return'<div class="group-card"><h4>'+g+'등급</h4>'+TIERS.map(function(tName,t){var idx=(cfg.tiers||[]).indexOf(t);var val=idx>=0?(cfg.basis[idx]||0):0;return'<div class="tier-row"><span>'+tName+'</span><input type="number" id="gb_'+g+'_'+t+'" value="'+val+'" min="0" style="width:45px;padding:2px;border:1px solid #ddd;border-radius:3px;text-align:center;" onchange="saveTierConfig()"></div>';}).join('')+'</div>';}).join('');
+    if(gc)gc.innerHTML=Object.keys(tierConfig.groups).map(function(g){var cfg=tierConfig.groups[g];if(g==='D'){return'<div class="group-card"><h4>D등급</h4><div style="font-size:0.78rem;color:#666;line-height:1.5;padding:6px 2px;">계열 기준 설정 불필요<br><strong style="color:#1a237e;">계열별 C등급의 70%</strong><br>자동 적용</div></div>';}return'<div class="group-card"><h4>'+g+'등급</h4>'+TIERS.map(function(tName,t){var idx=(cfg.tiers||[]).indexOf(t);var val=idx>=0?(cfg.basis[idx]||0):0;return'<div class="tier-row"><span>'+tName+'</span><input type="number" id="gb_'+g+'_'+t+'" value="'+val+'" min="0" style="width:45px;padding:2px;border:1px solid #ddd;border-radius:3px;text-align:center;" onchange="saveTierConfig()"></div>';}).join('')+'</div>';}).join('');
 }
 
 // 등급별/계열별 1인 분배 컨텍스트 (영어)
@@ -2675,6 +2676,210 @@ function buildTierDistContext(wd){
     function denom(ti,di){var d=0;groups.forEach(function(g){d+=staff[g][di]*(GROUP_WEIGHT[g]||1)*basisFor(g,ti);});return d;}
     function pp(g,ti,di,target){var d=denom(ti,di);var b=basisFor(g,ti);if(d<=0||staff[g][di]<=0||b<=0||target<=0)return 0;return Math.round(target*(GROUP_WEIGHT[g]||1)*b/d);}
     return{staff:staff,pp:pp,basisFor:basisFor,denom:denom};
+}
+
+// ======================== 주간 예상표 (DB 예상안 양식) / 1인 분배 ========================
+// 1인 분배 규칙 — 2026년 7~10월 수기 예상표(15주) 분석 결과:
+//  · 하루 1인 총량은 A·B·C 동일, D는 C의 70% (GROUP_WEIGHT)
+//  · 분배 총량 = 누적 예상 유입 − 누적 분배 (일요일·휴무일 유입은 다음 근무일로 넘어감, 반올림 오차도 다음 날 보정)
+//  · 받는 계열: 평일 A 0~5 / B 1~5 / C 3~5 / D 4~5, 휴일(토·일·공휴일 근무) A 0~5 / B 1~5 / C·D 2~5
+//  · 평일은 학습한 등급별 계열 비중에서, 휴일은 범위 안 균등에서 출발해
+//    "등급별 1인 총량"과 "계열별 예상 수량"을 동시에 맞추도록 반복 비례 조정(IPF) → 정수 반올림
+var YS_GRADES=['A','B','C','D'];
+var YS_ELIG={wk:{A:[0,1,2,3,4,5],B:[1,2,3,4,5],C:[3,4,5],D:[4,5]},hol:{A:[0,1,2,3,4,5],B:[1,2,3,4,5],C:[2,3,4,5],D:[2,3,4,5]}};
+var YS_SHARE_DEFAULT={A:[8.7,6.2,25.9,26.5,13.0,19.7],B:[0,3.8,24.6,37.7,14.0,19.9],C:[0,0,0,11.0,26.9,62.1],D:[0,0,0,0,30.2,69.8]};
+var yesangLearn=null; // {shares:{A:[6],...}, files:[파일명], at:'YYYY-MM-DD'} — IDB·동기화
+function ysSum(a){return a.reduce(function(x,y){return x+(y||0);},0);}
+function ysShares(){var s=(yesangLearn&&yesangLearn.shares)||{},o={};YS_GRADES.forEach(function(g){o[g]=(s[g]&&ysSum(s[g])>0)?s[g]:YS_SHARE_DEFAULT[g];});return o;}
+function ysIsHol(i){var dw=WEEK_ORDER[i];return dw===0||dw===6||isWeekdayHoliday(i);}
+function ysSerial(ds){var p=ds.split('-');return(Date.UTC(+p[0],+p[1]-1,+p[2])-Date.UTC(1899,11,30))/86400000;}
+
+// 인원: 토·일은 출근 인원, 평일은 휴무 인원 (근무현황 > 근무 통계의 '근무일정(특근)' 기준, 등급 × 6개 센터)
+// n = 실제 분배 인원 (토·일 = 출근, 평일 = 기준인원 K − 휴무) — 엑셀 수식과 같은 방식
+function ysStaffing(wd){
+    var days=wsHsDays(),cen=WS_CENTERS_DEFAULT,rows=YS_GRADES.concat(['제2외국어']);
+    var cnt=function(t,r){return cen.map(function(c){return t[r]&&t[r][c]?t[r][c].length:0;});};
+    var find=function(ds){return days.find(function(x){return x.ds===ds;});};
+    var out={tbl:[],n:{},K:{},missing:[]};rows.forEach(function(r){out.n[r]=[];});
+    wd.forEach(function(ds,i){
+        var d=find(ds),wkEnd=WEEK_ORDER[i]===0||WEEK_ORDER[i]===6;
+        if(!d){out.tbl.push(null);out.missing.push(ds);return;}
+        var R=wsHsCalc(d,wkEnd?'work':'off').plan.g,t={};rows.forEach(function(r){t[r]=cnt(R,r);});
+        out.tbl.push({work:wkEnd,c:t});
+    });
+    var kd=null;wd.some(function(ds,i){if(WEEK_ORDER[i]===0||WEEK_ORDER[i]===6)return false;kd=find(ds);return!!kd;});
+    rows.forEach(function(r){
+        if(kd){var w=wsHsCalc(kd,'work').plan.g,o=wsHsCalc(kd,'off').plan.g;out.K[r]=ysSum(cnt(w,r))+ysSum(cnt(o,r));}
+        else out.K[r]=attendanceData.filter(function(p){return r==='제2외국어'?classifyStaffDB(p)==='제2외국어':(classifyStaffGroup(p)===r&&classifyStaffDB(p)==='영어');}).length;
+        wd.forEach(function(ds,i){
+            var tb=out.tbl[i],v;
+            if(!tb)v=(r==='제2외국어'?getWorkingSecStaffForDate(ds):getWorkingStaffByGroupForDate(ds,r))||0;
+            else v=tb.work?ysSum(tb.c[r]):Math.max(0,out.K[r]-ysSum(tb.c[r]));
+            out.n[r][i]=isWorkDay(i)?v:0;
+        });
+    });
+    return out;
+}
+
+// 엑셀 왼쪽 [예상 유입 DB]·[매체별 예상 수량]에 들어갈 값 (차주 예상 화면·통합 엑셀과 같은 계산)
+var YS_LANGS=['영어','일본어','중국어','스페인어','프랑스어'];
+function ysInputs(){
+    var z=function(){return WEEK_ORDER.map(function(){return 0;});};
+    var P={media:{},pm:{},tbHour:{},tbSatExtra:0,tbEng:z(),spEng:z(),secTbAM:z(),secTbPM:z(),secSp:z()};
+    YS_LANGS.forEach(function(L){
+        var dts=[L],tAM=smartMediaDOWByPeriod(dts,'오전'),tPM=smartMediaDOWByPeriod(dts,'오후'),tAll=smartMediaDOW(dts),ratios=getAdjustDayRatios(dts,L);
+        P.media[L]=MEDIA_TYPES.map(function(m){return WEEK_ORDER.map(function(_,i){var r=ratios[i],ed=effDow(i);return isWorkDay(i)?round5(tAM[m][ed]*r):round5(tAll[m][ed]*r*offDispFactor(i));});});
+        P.pm[L]=WEEK_ORDER.map(function(_,i){if(!isWorkDay(i))return 0;var s=0;MEDIA_TYPES.forEach(function(m){s+=round5(tPM[m][effDow(i)]*ratios[i]);});return s;});
+    });
+    getActiveSchedules().forEach(function(s){
+        var bd=s.breakdown||{},eng=bd['영어']||0,sec=SEC_LANG_TYPES.reduce(function(a,dt){return a+(bd[dt]||0);},0);
+        var di=getScheduleWeekIdx(s),oi=getScheduleOrigWeekIdx(s),hr=s.hour!==null&&s.hour!==undefined?s.hour:0;
+        if(di<0)return;
+        if(s.type==='timeboard'){
+            if(eng){P.tbEng[di]+=eng;if(oi>=0){(P.tbHour[hr]=P.tbHour[hr]||z())[oi]+=eng;}else P.tbSatExtra+=eng;}
+            if(sec){if(hr>=DIST_CUTOFF_HOUR||hr<10)P.secTbAM[di]+=sec;else P.secTbPM[di]+=sec;}
+        }else{P.spEng[di]+=eng;P.secSp[di]+=sec;}
+    });
+    P.engAM=WEEK_ORDER.map(function(_,i){return ysSum(P.media['영어'].map(function(r){return r[i];}));});
+    P.secAM=WEEK_ORDER.map(function(_,i){return ysSum(SEC_LANG_TYPES.map(function(L){return ysSum(P.media[L].map(function(r){return r[i];}));}));});
+    P.secPM=WEEK_ORDER.map(function(_,i){return ysSum(SEC_LANG_TYPES.map(function(L){return P.pm[L][i];}));});
+    P.E=WEEK_ORDER.map(function(_,i){return P.engAM[i]+P.tbEng[i]+P.spEng[i]+P.pm['영어'][i];});
+    P.S=WEEK_ORDER.map(function(_,i){return P.secAM[i]+P.secTbAM[i]+P.secSp[i]+P.secTbPM[i]+P.secPM[i];});
+    return P;
+}
+
+// 1인 분배 계산. E/S = 날짜별 영어/제2외 예상 유입, n = 날짜별 분배 인원, w = 계열 비중(합 1), secW = [상위, 하위]
+function ysAllocate(E,S,n,shares,w,secW){
+    var z7=function(){return[0,0,0,0,0,0,0];},pp={},sec={up:z7(),low:z7()};
+    YS_GRADES.forEach(function(g){pp[g]=[0,1,2,3,4,5].map(z7);});
+    var cumT=[0,0,0,0,0,0],cumD=[0,0,0,0,0,0],cS=[0,0],cSD=[0,0];
+    for(var i=0;i<7;i++){
+        for(var s=0;s<6;s++)cumT[s]+=E[i]*w[s];
+        cS[0]+=S[i]*secW[0];cS[1]+=S[i]*secW[1];
+        if(!isWorkDay(i))continue;
+        var ns=n['제2외국어'][i]||0;
+        if(ns>0)[0,1].forEach(function(k){var v=Math.max(0,Math.round((cS[k]-cSD[k])/ns));(k?sec.low:sec.up)[i]=v;cSD[k]+=v*ns;});
+        var need=cumT.map(function(t,s){return Math.max(0,t-cumD[s]);}),D=ysSum(need),den=0;
+        YS_GRADES.forEach(function(g){den+=(n[g][i]||0)*(GROUP_WEIGHT[g]||1);});
+        if(den<=0||D<=0)continue;
+        var hol=ysIsHol(i),el=YS_ELIG[hol?'hol':'wk'],x={},tg={};
+        YS_GRADES.forEach(function(g){
+            tg[g]=D*(GROUP_WEIGHT[g]||1)/den;
+            var pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:(hol?1:(shares[g][s]||0));});
+            if(!(ysSum(pr)>0))pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:1;});
+            var ps=ysSum(pr);x[g]=pr.map(function(v){return v/ps*tg[g];});
+        });
+        for(var it=0;it<80;it++){
+            for(var s2=0;s2<6;s2++){var cs=0;YS_GRADES.forEach(function(g){cs+=(n[g][i]||0)*x[g][s2];});if(cs>0){var f=need[s2]/cs;YS_GRADES.forEach(function(g){x[g][s2]*=f;});}}
+            YS_GRADES.forEach(function(g){var rs=ysSum(x[g]);if(rs>0)x[g]=x[g].map(function(v){return v*tg[g]/rs;});});
+        }
+        YS_GRADES.forEach(function(g){
+            if(!(n[g][i]>0))return;
+            var R=Math.round(tg[g]),fl=x[g].map(Math.floor),rem=R-ysSum(fl);
+            x[g].map(function(v,s){return[v-Math.floor(v),s];}).sort(function(a,b){return b[0]-a[0];}).forEach(function(o){if(rem>0&&x[g][o[1]]>0){fl[o[1]]++;rem--;}});
+            fl.forEach(function(v,s){pp[g][s][i]=v;cumD[s]+=v*n[g][i];});
+        });
+    }
+    return{pp:pp,sec:sec};
+}
+
+// 화면·공유·엑셀 공통 계획. updateTierPrediction()에서 lastPredData.ys로 저장
+function ysBuildPlan(){
+    var wd=getNextWeekDates(),P=ysInputs(),st=ysStaffing(wd);
+    var wSum=ysSum(tierConfig.weights)||1,w=tierConfig.weights.map(function(v){return v/wSum;});
+    var su=tierConfig.secWeightUpper||46,sl=tierConfig.secWeightLower||54,secW=[su/(su+sl),sl/(su+sl)];
+    var A=ysAllocate(P.E,P.S,st.n,ysShares(),w,secW);
+    P.wd=wd;P.st=st;P.w=w;P.secW=secW;P.pp=A.pp;P.sec=A.sec;
+    return P;
+}
+
+// ---------- 1인 분배 학습: 수기로 고친 '예상' 파일에서 등급별 평일 계열 비중 ----------
+function ysLearnFromSheet(ws){
+    var v=function(a){var c=ws[a];return c?c.v:undefined;};
+    var b3=v('B3');if(typeof b3!=='number')return null;
+    var base=Date.UTC(1899,11,30)+Math.round(b3)*86400000,cols=['M','O','Q','S','U','W','Y'],acc={},found=false;
+    for(var r=3;r<=45;r++){
+        var m=String(v('J'+r)||'').replace(/\s/g,'').match(/^([A-D])등급$/);
+        if(!m||typeof v('K'+r)!=='number'||!/0계열/.test(String(v('L'+r)||'')))continue;
+        var g=m[1];acc[g]=acc[g]||[0,0,0,0,0,0];found=true;
+        cols.forEach(function(c,di){
+            var dt=new Date(base+di*86400000),dw=dt.getUTCDay(),ds=dt.toISOString().slice(0,10);
+            if(dw===0||dw===6||KR_HOLI_SET.has(ds))return; // 평일만 학습 (휴일은 균등 규칙)
+            var col=[0,1,2,3,4,5].map(function(s){var x=v(c+(r+s));return typeof x==='number'?x:0;});
+            if(ysSum(col)>0)col.forEach(function(x,s){acc[g][s]+=x;});
+        });
+    }
+    return found?acc:null;
+}
+async function ysLearnUpload(input){
+    var files=Array.prototype.slice.call(input.files||[]);input.value='';if(!files.length)return;
+    var acc={},used=[],skipped=[];
+    for(var f of files){
+        try{
+            var wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
+            var ws=wb.Sheets['DB 예상안']||wb.Sheets[wb.SheetNames[0]],a=ws&&ysLearnFromSheet(ws);
+            if(!a){skipped.push(f.name);continue;}
+            Object.keys(a).forEach(function(g){acc[g]=acc[g]||[0,0,0,0,0,0];a[g].forEach(function(x,s){acc[g][s]+=x;});});
+            used.push(f.name);
+        }catch(e){skipped.push(f.name);}
+    }
+    if(!used.length){alert('학습할 수 있는 예상 파일이 없습니다.\n(DB 예상안 시트에 A등급·B등급 같은 블록과 1인 분배 숫자가 있어야 합니다)');return;}
+    var shares={};YS_GRADES.forEach(function(g){var a=acc[g],t=a?ysSum(a):0;if(t>0)shares[g]=a.map(function(x){return Math.round(x/t*1000)/10;});});
+    yesangLearn={shares:shares,files:used,at:formatDate(new Date())};
+    markDirty();idbPut('yesangLearn',yesangLearn);
+    ysRenderLearnBox();refreshPredictions();
+    alert(used.length+'개 파일로 학습했습니다'+(skipped.length?'\n(제외: '+skipped.join(', ')+')':'')+(shares.D?'':'\nD등급은 파일에 없어 기본값(C등급 4·5계열 비율)을 씁니다'));
+}
+function ysLearnReset(){if(!confirm('학습값을 지우고 기본값(2026년 7~10월 예상표 15주)으로 되돌릴까요?'))return;yesangLearn=null;markDirty();idbPut('yesangLearn',null);ysRenderLearnBox();refreshPredictions();}
+function ysRenderLearnBox(){
+    var el=document.getElementById('ysLearnBox');if(!el)return;
+    var sh=ysShares(),L=yesangLearn;
+    var h='<div style="font-size:0.8rem;color:#555;margin-bottom:6px;">하루 1인 총량은 A·B·C 동일, D는 C의 70% · 휴일(토·일·공휴일)은 A 0~5 / B 1~5 / C·D 2~5계열 균등 · 아래 평일 비중은 '+(L?'<b>'+L.files.length+'개 예상 파일</b>로 학습 ('+L.at+')':'<b>기본값</b> (2026년 7~10월 예상표 15주 분석)')+'</div>';
+    h+='<div class="table-wrap"><table style="font-size:0.8rem;"><thead><tr><th>평일</th>'+TIERS.map(function(t){return'<th class="num">'+t+'</th>';}).join('')+'</tr></thead><tbody>';
+    YS_GRADES.forEach(function(g){h+='<tr><td>'+g+'등급</td>'+sh[g].map(function(v,s){return'<td class="num" style="'+(YS_ELIG.wk[g].indexOf(s)<0?'color:#ccc;':'')+'">'+(YS_ELIG.wk[g].indexOf(s)<0?'-':v.toFixed(1)+'%')+'</td>';}).join('')+'</tr>';});
+    h+='</tbody></table></div>';
+    h+='<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><label class="btn btn-primary" style="font-size:0.78rem;padding:5px 12px;cursor:pointer;">예상 파일 올려 학습<input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="ysLearnUpload(this)"></label>';
+    if(L)h+='<button class="btn" style="font-size:0.78rem;padding:5px 12px;background:#eee;color:#333;" onclick="ysLearnReset()">기본값으로</button>';
+    h+='<span style="font-size:0.75rem;color:#888;align-self:center;">수기로 고친 \'N월 N주 계산 - 예상.xlsx\' 파일을 여러 개 한꺼번에 올리면 평일 비중을 다시 계산합니다</span></div>';
+    el.innerHTML=h;
+}
+
+// ---------- 주간 예상표 엑셀: yesang_template.xlsx(원본 양식 + D등급)에 값만 채움 → 서식·수식 그대로 ----------
+async function downloadYesangExcel(){
+    try{
+        if(!allData.length){alert('DB 데이터가 없습니다');return;}
+        var P=ysBuildPlan();
+        if(P.st.missing.length&&!confirm('근태파일에 없는 날짜가 있어 인원표 일부가 비어 있습니다: '+P.st.missing.join(', ')+'\n그래도 받을까요?'))return;
+        if(!window.ExcelJS)await wsLoadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+        var res=await fetch('yesang_template.xlsx?v=1');if(!res.ok)throw new Error('양식 파일(yesang_template.xlsx)을 불러오지 못했습니다');
+        var wb=new ExcelJS.Workbook();await wb.xlsx.load(await res.arrayBuffer());
+        var ws=wb.getWorksheet('DB 예상안');
+        var put=function(a,v){ws.getCell(a).value=(v===undefined||v===null||v==='')?null:v;},nz=function(v){return v?v:null;};
+        var DC='BCDEFGH',CEN='BCDEFG',OFFC='PQRSTU',PC=['M','O','Q','S','U','W','Y'],rowsG=YS_GRADES.concat(['제2외국어']);
+        put('B3',ysSerial(P.wd[0]));
+        for(var h=0;h<24;h++)for(var i=0;i<7;i++)put(DC[i]+(5+h),nz(P.tbHour[h]&&P.tbHour[h][i]));
+        if(P.tbSatExtra)ws.getCell('B31').value={formula:'SUM(B5:B21)+'+P.tbSatExtra}; // 지난 금요일 17시 이후 타임보드
+        for(i=0;i<7;i++){var c=DC[i];
+            put(c+'30',P.engAM[i]);put(c+'32',nz(P.spEng[i]));put(c+'33',P.pm['영어'][i]);
+            put(c+'34',P.secAM[i]);put(c+'35',nz(P.secTbAM[i]));put(c+'36',nz(P.secSp[i]));put(c+'37',nz(P.secTbPM[i]));put(c+'38',P.secPM[i]);
+        }
+        [[0,51],[1,60]].forEach(function(x){var tb=P.st.tbl[x[0]];if(!tb)return;rowsG.forEach(function(r,k){tb.c[r].forEach(function(v,ci){put(CEN[ci]+(x[1]+k),nz(v));});});});
+        [75,85,94,103,112].forEach(function(r0,k){var tb=P.st.tbl[k+2];if(!tb)return;rowsG.forEach(function(r,j){tb.c[r].forEach(function(v,ci){put(OFFC[ci]+(r0+j),nz(v));});});});
+        [['영어',84,92],['일본어',108,116],['중국어',120,128],['스페인어',132,140],['프랑스어',144,152]].forEach(function(x){
+            P.media[x[0]].forEach(function(row,mi){row.forEach(function(v,i){put(DC[i]+(x[1]+mi),v);});});
+            P.pm[x[0]].forEach(function(v,i){put(DC[i]+x[2],v);});
+        });
+        put('K5',P.st.K.A);put('K12',P.st.K.B);put('K19',P.st.K.C);put('K26',P.st.K.D);put('K33',P.st.K['제2외국어']);
+        [['A',5],['B',12],['C',19],['D',26]].forEach(function(x){for(var s=0;s<6;s++)PC.forEach(function(c,i){put(c+(x[1]+s),nz(P.pp[x[0]][s][i]));});});
+        PC.forEach(function(c,i){put(c+'33',nz(P.sec.up[i]));put(c+'34',nz(P.sec.low[i]));});
+        P.w.forEach(function(v,s){put('AD'+(4+s),Math.round(v*10000)/10000);});
+        put('AD11',Math.round(P.secW[0]*10000)/10000);put('AD12',Math.round(P.secW[1]*10000)/10000);
+        wb.calcProperties.fullCalcOnLoad=true;
+        var buf=await wb.xlsx.writeBuffer(),mon=new Date(P.wd[2]+'T00:00:00');
+        var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+        a.download=(mon.getMonth()+1)+'월 '+mon.getDate()+'주 계산 - 예상.xlsx';document.body.appendChild(a);a.click();
+        setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+    }catch(e){console.error(e);alert('예상표 다운로드 실패: '+e.message);}
 }
 
 function updateTierPrediction(){
@@ -2734,45 +2939,35 @@ function updateTierPrediction(){
     // --- 그룹별/계열별 1인 분배 (계열별 예상 DB 기준 비례 배분) ---
     if(!attendanceData.length){document.getElementById('groupDistSection').style.display='none';return;}
     document.getElementById('groupDistSection').style.display='block';
-    var gdHtml='';
-    var distCtx=buildTierDistContext(wd);
-    Object.keys(tierConfig.groups).forEach(function(g){
-        var cfg=tierConfig.groups[g];
-        var staffPerDay=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g);});
+    // 학습 규칙 기반 1인 분배 (주간 예상표 엑셀과 같은 값)
+    var ys=lastPredData.ys=ysBuildPlan();
+    var gdHtml='<p style="font-size:0.8rem;color:#666;margin-bottom:8px;">인원 = 근무 통계의 근무일정(특근) 기준 (토·일 출근 / 평일 기준인원 − 휴무) · 1인 총량 A·B·C 동일, D는 70% · 일요일·휴무일 유입은 다음 근무일로'+(ys.st.missing.length?' · <b style="color:#dc2626;">근태파일에 없는 날짜('+ys.st.missing.join(', ')+')는 근태 출근 인원으로 대체</b>':'')+'</p>';
+    YS_GRADES.forEach(function(g){
         gdHtml+='<p class="section-sub">'+g+'등급</p>';
         gdHtml+='<div class="table-wrap"><table><thead><tr><th>계열</th>';
-        pdl.forEach(function(l,i){var s=staffPerDay[i];var n=(s==null?'?':String(s));gdHtml+='<th class="num">'+l.replace(/\)$/,', '+n+'명)')+'</th>';});
+        pdl.forEach(function(l,i){gdHtml+='<th class="num">'+l.replace(/\)$/,', '+ys.st.n[g][i]+'명)')+'</th>';});
         gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
-        var grpTotalPerDay=WEEK_ORDER.map(function(){return 0;});
-        cfg.tiers.forEach(function(ti,bi){
-            var perPerson=WEEK_ORDER.map(function(_,di){
-                var target=(tierDailyEng[ti]||[])[di]||0;
-                var pp=distCtx.pp(g,ti,di,target);
-                grpTotalPerDay[di]+=pp;
-                return pp;
-            });
-            gdHtml+='<tr><td>'+TIERS[ti]+'</td>'+perPerson.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num">'+fn(perPerson.reduce(function(a,b){return a+b;},0))+'</td></tr>';
+        var tot=WEEK_ORDER.map(function(){return 0;});
+        ys.pp[g].forEach(function(row,s){
+            if(YS_ELIG.wk[g].indexOf(s)<0&&YS_ELIG.hol[g].indexOf(s)<0)return;
+            row.forEach(function(v,i){tot[i]+=v;});
+            gdHtml+='<tr><td>'+TIERS[s]+'</td>'+row.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num">'+fn(ysSum(row))+'</td></tr>';
         });
-        gdHtml+='<tr class="highlight-row"><td>합계</td>'+grpTotalPerDay.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(grpTotalPerDay.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
+        gdHtml+='<tr class="highlight-row"><td>합계</td>'+tot.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(ysSum(tot))+'</strong></td></tr>';
         gdHtml+='</tbody></table></div>';
     });
 
     // 제2외국어 1인 분배
-    var secStaff=wd.map(function(ds){return getWorkingSecStaffForDate(ds);});
+    var secStaff=ys.st.n['제2외국어'];
     gdHtml+='<p class="section-sub">제2외국어</p>';
     gdHtml+='<div class="table-wrap"><table><thead><tr><th>구분</th>';
-    pdl.forEach(function(l,i){var s=secStaff[i];var n=(s==null?'?':String(s));gdHtml+='<th class="num">'+l.replace(/\)$/,', '+n+'명)')+'</th>';});
+    pdl.forEach(function(l,i){gdHtml+='<th class="num">'+l.replace(/\)$/,', '+secStaff[i]+'명)')+'</th>';});
     gdHtml+='<th class="num">합계</th></tr></thead><tbody>';
-    ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
-        var ppVals=WEEK_ORDER.map(function(_,di){
-            var st=secStaff[di];if(!st)return 0;
-            var tierTotal=ti===0?secUpperVals[di]:secLowerVals[di];
-            return Math.round(tierTotal/st);
-        });
-        gdHtml+='<tr><td>'+tier+'</td>'+ppVals.map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num">'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';
+    [['상위 (0~2계열)',ys.sec.up],['하위 (3~5계열)',ys.sec.low]].forEach(function(x){
+        gdHtml+='<tr><td>'+x[0]+'</td>'+x[1].map(function(v){return'<td class="num">'+fnd(v)+'</td>';}).join('')+'<td class="num">'+fn(ysSum(x[1]))+'</td></tr>';
     });
-    var secPPTotal=WEEK_ORDER.map(function(_,di){var st=secStaff[di];return st?Math.round(secEffective[di]/st):0;});
-    gdHtml+='<tr class="highlight-row"><td>합계</td>'+secPPTotal.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(secPPTotal.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
+    var secPPTotal=WEEK_ORDER.map(function(_,i){return ys.sec.up[i]+ys.sec.low[i];});
+    gdHtml+='<tr class="highlight-row"><td>합계</td>'+secPPTotal.map(function(v){return'<td class="num">'+fn(v)+'</td>';}).join('')+'<td class="num"><strong>'+fn(ysSum(secPPTotal))+'</strong></td></tr>';
     gdHtml+='</tbody></table></div>';
 
     // 톡이즈 1인 분배
@@ -2983,33 +3178,30 @@ function updateShareTab(){
         var gh='<div class="share-section" id="'+prefix+'sec-group">';
         gh+='<h3>등급별 1인 예상 분배 DB수</h3>';
         var wd=getNextWeekDates();
-        var shareDistCtx=buildTierDistContext(wd);
-        var shareTierDaily=lastPredData.tierDailyEng||[];
-        Object.keys(tierConfig.groups).forEach(function(g,gi){
-            var cfg=tierConfig.groups[g],staffPD=wd.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;}),grpTotal=WEEK_ORDER.map(function(){return 0;}),isFirst=true;
+        var ys=lastPredData.ys||ysBuildPlan();
+        YS_GRADES.forEach(function(g,gi){
+            var staffPD=ys.st.n[g],grpTotal=WEEK_ORDER.map(function(){return 0;}),isFirst=true;
             gh+='<table class="share-table"'+(gi>0?' style="margin-top:12px;"':'')+'><thead><tr><th>등급</th><th>계열</th>';
             pdl.forEach(function(l,i){gh+='<th>'+l.replace(/\)$/,', '+staffPD[i]+'명)')+'</th>';});
             gh+='<th>합계</th></tr></thead><tbody>';
-            cfg.tiers.forEach(function(ti,bi){
-                var ppVals=WEEK_ORDER.map(function(_,di){var target=(shareTierDaily[ti]||[])[di]||0;var pp=shareDistCtx.pp(g,ti,di,target);grpTotal[di]+=pp;return pp;});
+            [0,1,2,3,4,5].filter(function(ti){return YS_ELIG.wk[g].indexOf(ti)>=0||YS_ELIG.hol[g].indexOf(ti)>=0;}).forEach(function(ti){
+                var ppVals=ys.pp[g][ti].slice();ppVals.forEach(function(v,di){grpTotal[di]+=v;});
                 gh+='<tr><td>'+(isFirst?'<strong style="color:#1a237e;">'+g+'등급</strong>':'')+'</td><td style="color:#666;font-size:0.82rem;">'+TIERS[ti]+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';isFirst=false;
             });
             gh+='<tr style="background:#e8eaf6;font-weight:700;"><td></td><td style="color:#1a237e;">합계</td>'+grpTotal.map(function(v){return'<td style="color:#1a237e;">'+fn(v)+'</td>';}).join('')+'<td style="color:#1a237e;"><strong>'+fn(grpTotal.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
             gh+='</tbody></table>';
         });
         // 제2외국어
-        var secStaff=wd.map(function(ds){return getWorkingSecStaffForDate(ds)||0;});
-        var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
-        var secU=lastPredData.secUpperVals||WEEK_ORDER.map(function(){return 0;}),secL=lastPredData.secLowerVals||WEEK_ORDER.map(function(){return 0;});
+        var secStaff=ys.st.n['제2외국어'];
         gh+='<table class="share-table" style="margin-top:12px;"><thead><tr><th>등급</th><th>구분</th>';
         pdl.forEach(function(l,i){gh+='<th>'+l.replace(/\)$/,', '+secStaff[i]+'명)')+'</th>';});
         gh+='<th>합계</th></tr></thead><tbody>';
         var secFirst=true;
         ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
-            var vals=(ti===0?secU:secL);var ppVals=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(vals[di]/secStaff[di]):0;});
+            var ppVals=(ti===0?ys.sec.up:ys.sec.low).slice();
             gh+='<tr><td>'+(secFirst?'<strong style="color:#2e7d32;">제2외국어</strong>':'')+'</td><td style="color:#666;font-size:0.82rem;">'+tier+'</td>'+ppVals.map(function(v){return'<td>'+fnd(v)+'</td>';}).join('')+'<td>'+fn(ppVals.reduce(function(a,b){return a+b;},0))+'</td></tr>';secFirst=false;
         });
-        var secPPT=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(secEff[di]/secStaff[di]):0;});
+        var secPPT=WEEK_ORDER.map(function(_,di){return ys.sec.up[di]+ys.sec.low[di];});
         gh+='<tr style="background:#e8f5e9;font-weight:700;"><td></td><td style="color:#2e7d32;">합계</td>'+secPPT.map(function(v){return'<td style="color:#2e7d32;">'+fn(v)+'</td>';}).join('')+'<td style="color:#2e7d32;"><strong>'+fn(secPPT.reduce(function(a,b){return a+b;},0))+'</strong></td></tr>';
         gh+='</tbody></table>';
         // 톡이즈
@@ -3427,38 +3619,25 @@ function downloadPredExcel(){
     if(attendanceData.length&&lastPredData.tierDailyEng){
         var gi=[['등급별 / 계열별 1인 분배 예상 ('+wl+')']];
         var wd2=getNextWeekDates();
-        var xlDistCtx=buildTierDistContext(wd2);
-        var xlTierDaily=lastPredData.tierDailyEng||[];
-        // 등급별 영어
-        Object.keys(tierConfig.groups).forEach(function(g){
-            var cfg=tierConfig.groups[g];
-            var staffPD=wd2.map(function(ds){return getWorkingStaffByGroupForDate(ds,g)||0;});
+        var ys=lastPredData.ys||ysBuildPlan();
+        // 등급별 영어 (학습 규칙 기반 — 주간 예상표와 같은 값)
+        YS_GRADES.forEach(function(g){
+            var staffPD=ys.st.n[g];
             gi.push([]);gi.push([g+'등급']);
-            var hdrWithStaff=['계열'].concat(pdl.map(function(l,i){return l.replace(/\)$/,', '+staffPD[i]+'명)');})).concat(['합계']);
-            gi.push(hdrWithStaff);
+            gi.push(['계열'].concat(pdl.map(function(l,i){return l.replace(/\)$/,', '+staffPD[i]+'명)');})).concat(['합계']));
             var grpTotal=WEEK_ORDER.map(function(){return 0;});
-            cfg.tiers.forEach(function(tidx,bi){
-                var ppVals=WEEK_ORDER.map(function(_,di){
-                    var target=(xlTierDaily[tidx]||[])[di]||0;
-                    var pp=xlDistCtx.pp(g,tidx,di,target);
-                    grpTotal[di]+=pp;return pp;
-                });
-                gi.push([TIERS[tidx]].concat(ppVals).concat([ppVals.reduce(function(a,b){return a+b;},0)]));
+            [0,1,2,3,4,5].filter(function(t){return YS_ELIG.wk[g].indexOf(t)>=0||YS_ELIG.hol[g].indexOf(t)>=0;}).forEach(function(tidx){
+                var ppVals=ys.pp[g][tidx].slice();ppVals.forEach(function(v,di){grpTotal[di]+=v;});
+                gi.push([TIERS[tidx]].concat(ppVals).concat([ysSum(ppVals)]));
             });
-            gi.push(['합계'].concat(grpTotal).concat([grpTotal.reduce(function(a,b){return a+b;},0)]));
+            gi.push(['합계'].concat(grpTotal).concat([ysSum(grpTotal)]));
         });
         // 제2외국어
-        var secStaff=wd2.map(function(ds){return getWorkingSecStaffForDate(ds)||0;});
+        var secStaff=ys.st.n['제2외국어'];
         gi.push([]);gi.push(['제2외국어']);
         gi.push(['구분'].concat(pdl.map(function(l,i){return l.replace(/\)$/,', '+secStaff[i]+'명)');})).concat(['합계']));
-        var secEff=lastPredData.secEffective||WEEK_ORDER.map(function(){return 0;});
-        var secU=lastPredData.secUpperVals||WEEK_ORDER.map(function(){return 0;}),secL=lastPredData.secLowerVals||WEEK_ORDER.map(function(){return 0;});
-        ['상위 (0~2계열)','하위 (3~5계열)'].forEach(function(tier,ti){
-            var vals=(ti===0?secU:secL);
-            var ppVals=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(vals[di]/secStaff[di]):0;});
-            gi.push([tier].concat(ppVals).concat([ppVals.reduce(function(a,b){return a+b;},0)]));
-        });
-        var secPPT=WEEK_ORDER.map(function(_,di){return secStaff[di]?Math.round(secEff[di]/secStaff[di]):0;});
+        [['상위 (0~2계열)',ys.sec.up],['하위 (3~5계열)',ys.sec.low]].forEach(function(x){gi.push([x[0]].concat(x[1]).concat([ysSum(x[1])]));});
+        var secPPT=WEEK_ORDER.map(function(_,di){return ys.sec.up[di]+ys.sec.low[di];});
         gi.push(['합계'].concat(secPPT).concat([secPPT.reduce(function(a,b){return a+b;},0)]));
         // 톡이즈
         var talkStaff=wd2.map(function(ds){return getWorkingStaffForDate(ds,'톡이즈')||0;});
@@ -3617,7 +3796,7 @@ async function saveToGitHub(auto){
     async function _doPush(){
         var now=new Date();
         var syncTs=now.getFullYear()+'.'+(now.getMonth()+1).toString().padStart(2,'0')+'.'+now.getDate().toString().padStart(2,'0')+' '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,wsAttArchive:wsAttArchive,wsHist:wsHist,lastSyncTime:syncTs});
+        var payload=JSON.stringify({dbData:allData.map(slimRecord),dbFiles:uploadedFiles,schedules:schedules,attendanceData:attendanceData,attendanceFiles:attendanceFiles,attendanceMonth:attendanceMonth,actualInflowData:actualInflowData,actualInflowFiles:actualInflowFiles,manualAdjust:manualAdjust,wsManagers:wsManagers,wsOverrides:wsOverrides,wsCenters:wsCenters,wsHoliExtra:wsHoliExtra,wsRoster:wsRoster,wsMgrDir:wsMgrDir,wsAttArchive:wsAttArchive,wsHist:wsHist,yesangLearn:yesangLearn,lastSyncTime:syncTs});
         var compressed=await gzipCompress(payload);
         // ts를 맨 앞에 둬야 fetchRemoteSyncTs가 앞 200바이트만으로 시각을 읽을 수 있다 (구버전 클라이언트는 z만 읽으므로 호환)
         var wrapper=JSON.stringify({ts:syncTs,z:compressed});
@@ -3741,6 +3920,7 @@ async function loadFromJSON(){
             if(payload.wsMgrDir)wsMgrDir=payload.wsMgrDir;
             if(payload.wsAttArchive)wsAttArchive=payload.wsAttArchive;
             if(payload.wsHist)wsHist=payload.wsHist;
+            if(payload.yesangLearn!==undefined)yesangLearn=payload.yesangLearn;
             if(payload.lastSyncTime)localStorage.setItem('lastSyncTime',payload.lastSyncTime);
             // 원격 데이터를 IDB에도 영속화 (다음 오프라인 세션 대비)
             _suppressDirty=true;
@@ -3762,6 +3942,7 @@ async function loadFromJSON(){
                     await idbPut('wsMgrDir',wsMgrDir);
                     await idbPut('wsAttArchive',wsAttArchive);
                     await idbPut('wsHist',wsHist);
+                    await idbPut('yesangLearn',yesangLearn);
                 }catch(e){console.error('원격 동기화 영속화 실패:',e);}
             }finally{_suppressDirty=false;}
             clearDirty();
