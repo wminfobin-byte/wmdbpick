@@ -4758,7 +4758,7 @@ function wsHsHTML(){
     return h;
 }
 // 고른 날짜의 출근자 리스트 (근무일정 특근 기준 = 근무 통계 표와 같은 사람들) → 담당 DB | 센터 | 이름 엑셀
-// 담당 DB·이름은 근태파일 원본 그대로 (예: 제2외국어 | 당산 | (R_당산)홍길동)
+// 담당 DB = 영어·제2외국어·톡이즈, 이름은 근태파일 원본 그대로 (예: 제2외국어 | 당산 | (R_당산)홍길동)
 function wsHsWorkers(d){
     var R=wsHsCalc(d,'work'),cen=WS_CENTERS_DEFAULT,raw={},info={};
     wsHsPeople(d.ym).forEach(function(p){raw[wsName(p.name)]=String(p.name||'').trim();});
@@ -4768,7 +4768,7 @@ function wsHsWorkers(d){
         cen.forEach(function(c){
             R.plan.p[g][c].slice().sort(function(a,b){return a.localeCompare(b,'ko');}).forEach(function(nm){
                 var p=info[nm]||{},full=raw[nm]||(p.rc?'(R_'+p.rc+')':'')+nm;
-                out.push([p.department||g,c,full]);
+                out.push([g,c,full]); // 담당 DB = 영어(근태 '뇌새김영어')·제2외국어·톡이즈
             });
         });
     });
