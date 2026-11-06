@@ -2725,7 +2725,7 @@ function ysStaffing(wd){
 var YS_LANGS=['영어','일본어','중국어','스페인어','프랑스어'];
 function ysInputs(){
     var z=function(){return WEEK_ORDER.map(function(){return 0;});};
-    var P={media:{},pm:{},tbHour:{},tbSatExtra:0,tbEng:z(),spEng:z(),secTbAM:z(),secTbPM:z(),secSp:z()};
+    var P={media:{},pm:{},tbHour:{},tbSatExtra:0,tbEng:z(),spEng:z(),secTbAM:z(),secTbPM:z(),secSp:z(),secTbCells:[]};
     YS_LANGS.forEach(function(L){
         var dts=[L],tAM=smartMediaDOWByPeriod(dts,'오전'),tPM=smartMediaDOWByPeriod(dts,'오후'),tAll=smartMediaDOW(dts),ratios=getAdjustDayRatios(dts,L);
         P.media[L]=MEDIA_TYPES.map(function(m){return WEEK_ORDER.map(function(_,i){var r=ratios[i],ed=effDow(i);return isWorkDay(i)?round5(tAM[m][ed]*r):round5(tAll[m][ed]*r*offDispFactor(i));});});
@@ -2737,7 +2737,9 @@ function ysInputs(){
         if(di<0)return;
         if(s.type==='timeboard'){
             if(eng){P.tbEng[di]+=eng;if(oi>=0){(P.tbHour[hr]=P.tbHour[hr]||z())[oi]+=eng;}else P.tbSatExtra+=eng;}
-            if(sec){if(hr>=DIST_CUTOFF_HOUR||hr<10)P.secTbAM[di]+=sec;else P.secTbPM[di]+=sec;}
+            // 제2외 타임보드: 방송 칸(실제 요일·시간)은 초록색 표시, 수량은 분배일의 제2외 오전/오후 타임보드 행에
+            // 오전 = 전날 17시 이후~당일 9시 방송, 오후 = 10~16시 방송
+            if(sec){if(hr>=DIST_CUTOFF_HOUR||hr<10)P.secTbAM[di]+=sec;else P.secTbPM[di]+=sec;if(oi>=0)P.secTbCells.push([hr,oi]);}
         }else{P.spEng[di]+=eng;P.secSp[di]+=sec;}
     });
     P.engAM=WEEK_ORDER.map(function(_,i){return ysSum(P.media['영어'].map(function(r){return r[i];}));});
@@ -2851,13 +2853,15 @@ async function downloadYesangExcel(){
         var P=ysBuildPlan();
         if(P.st.missing.length&&!confirm('근태파일에 없는 날짜가 있어 인원표 일부가 비어 있습니다: '+P.st.missing.join(', ')+'\n그래도 받을까요?'))return;
         if(!window.ExcelJS)await wsLoadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
-        var res=await fetch('yesang_template.xlsx?v=1');if(!res.ok)throw new Error('양식 파일(yesang_template.xlsx)을 불러오지 못했습니다');
+        var res=await fetch('yesang_template.xlsx?v=2');if(!res.ok)throw new Error('양식 파일(yesang_template.xlsx)을 불러오지 못했습니다');
         var wb=new ExcelJS.Workbook();await wb.xlsx.load(await res.arrayBuffer());
         var ws=wb.getWorksheet('DB 예상안');
         var put=function(a,v){ws.getCell(a).value=(v===undefined||v===null||v==='')?null:v;},nz=function(v){return v?v:null;};
         var DC='BCDEFGH',CEN='BCDEFG',OFFC='PQRSTU',PC=['M','O','Q','S','U','W','Y'],rowsG=YS_GRADES.concat(['제2외국어']);
         put('B3',ysSerial(P.wd[0]));
         for(var h=0;h<24;h++)for(var i=0;i<7;i++)put(DC[i]+(5+h),nz(P.tbHour[h]&&P.tbHour[h][i]));
+        // 서식 객체를 여러 칸이 같이 쓰므로 복사한 뒤 색을 바꿈 (안 그러면 같은 서식 칸 전부가 칠해짐)
+        P.secTbCells.forEach(function(x){var c=ws.getCell(DC[x[1]]+(5+x[0]));c.style=Object.assign({},c.style,{fill:{type:'pattern',pattern:'solid',fgColor:{argb:'FF92D050'}}});});
         if(P.tbSatExtra)ws.getCell('B31').value={formula:'SUM(B5:B21)+'+P.tbSatExtra}; // 지난 금요일 17시 이후 타임보드
         for(i=0;i<7;i++){var c=DC[i];
             put(c+'30',P.engAM[i]);put(c+'32',nz(P.spEng[i]));put(c+'33',P.pm['영어'][i]);
