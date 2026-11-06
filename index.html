@@ -2838,7 +2838,7 @@ function ysLearnReset(){if(!confirm('학습값을 지우고 기본값(2026년 7~
 function ysRenderLearnBox(){
     var el=document.getElementById('ysLearnBox');if(!el)return;
     var sh=ysShares(),L=yesangLearn;
-    var h='<div style="font-size:0.8rem;color:#555;margin-bottom:6px;">하루 1인 총량은 A·B·C 동일, D는 C의 70% · 휴일(토·일·공휴일)은 A 0~5 / B 1~5 / C·D 2~5계열 균등 · 아래 평일 비중은 '+(L?'<b>'+L.files.length+'개 예상 파일</b>로 학습 ('+L.at+')':'<b>기본값</b> (2026년 7~10월 예상표 15주 분석)')+'</div>';
+    var h='<div style="font-size:0.8rem;color:#555;margin-bottom:6px;">하루 1인 총량은 A·B·C 동일, D는 평일에만 C의 70% · 휴일(토·일·공휴일)은 A~D 1인 총량 동일, A 0~5 / B 1~5 / C·D 2~5계열 균등 · 아래 평일 비중은 '+(L?'<b>'+L.files.length+'개 예상 파일</b>로 학습 ('+L.at+')':'<b>기본값</b> (2026년 7~10월 예상표 15주 분석)')+'</div>';
     h+='<div class="table-wrap"><table style="font-size:0.8rem;"><thead><tr><th>평일</th>'+TIERS.map(function(t){return'<th class="num">'+t+'</th>';}).join('')+'</tr></thead><tbody>';
     YS_GRADES.forEach(function(g){h+='<tr><td>'+g+'등급</td>'+sh[g].map(function(v,s){return'<td class="num" style="'+(YS_ELIG.wk[g].indexOf(s)<0?'color:#ccc;':'')+'">'+(YS_ELIG.wk[g].indexOf(s)<0?'-':v.toFixed(1)+'%')+'</td>';}).join('')+'</tr>';});
     h+='</tbody></table></div>';
