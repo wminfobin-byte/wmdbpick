@@ -316,6 +316,7 @@
         table.ws-mgr input{width:140px;padding:3px 4px;border:1px solid var(--gray-300);border-radius:4px;font-size:0.76rem;text-align:center}
         table.ws-mgr input:focus{outline:none;border-color:var(--blue)}
         .ws-hs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
+        .hw-drop.hw-over{background:#c2410c!important;outline:3px solid #fdba74;outline-offset:2px}
         .ws-hs-cap{font-size:0.78rem;font-weight:700;color:var(--navy);margin-bottom:4px}
         table.ws-hs{width:100%}
         table.ws-hs td.ws-hs-0{color:#c0c4cc}
@@ -4744,7 +4745,7 @@ function wsHsHTML(){
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><input type="date" value="'+_wsHsDs+'" min="'+days[0].ds+'" max="'+days[days.length-1].ds+'" onchange="if(this.value)wsHsPick(this.value);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     h+='<span style="font-size:0.85rem;color:var(--gray-600);">'+lab(d)+'</span>';
     h+='<button class="btn btn-primary" style="font-size:0.76rem;padding:4px 10px;" onclick="wsHsDownloadWorkers()">출근자 리스트 다운로드</button>';
-    h+='<label class="btn" style="font-size:0.76rem;padding:4px 10px;background:#f97316;color:#fff;cursor:pointer;" title="시간대별 성과 · 휴무 개인별 성과 · 휴일근무 근태보고 파일을 한꺼번에 선택하면 이 날짜 기준으로 채워서 같은 이름으로 다시 받습니다">휴일 파일 준비 (3종 올리기)<input type="file" accept=".xlsx" multiple style="display:none;" onchange="hwPrepUpload(this)"></label>';
+    h+='<label class="btn hw-drop" style="font-size:0.76rem;padding:4px 10px;background:#f97316;color:#fff;cursor:pointer;border:2px dashed rgba(255,255,255,0.7);" title="시간대별 성과 · 휴무 개인별 성과 · 휴일근무 근태보고 파일을 한꺼번에 선택하거나 여기에 끌어다 놓으면 이 날짜 기준으로 채워서 같은 이름으로 다시 받습니다">휴일 파일 준비 (3종 클릭 또는 끌어놓기)<input type="file" accept=".xlsx" multiple style="display:none;" onchange="hwPrepUpload(this)"></label>';
     if(d.wkDay){
         [['work','출근 인원'+(d.wkHol?' (평일공휴일출근)':'')],['off','휴무 인원'+(d.wkHol?' (평일공휴일휴무)':'')]].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
     }
@@ -5102,8 +5103,10 @@ async function hwAtt(zip,B,d){
     return ['새 시트 '+nm+' (본보기 '+T.name+') · 신청 영어 '+sum('영어')+' / 제2외국어 '+sum('제2외국어')+' / 톡이즈 '+sum('톡이즈')+(sp?'':' · 특이사항 칸 없음')];
 }
 
-async function hwPrepUpload(input){
-    var files=Array.prototype.slice.call(input.files||[]);input.value='';if(!files.length)return;
+async function hwPrepUpload(input){ // input = 파일 선택 칸 또는 끌어놓은 파일 배열
+    var dropped=Array.isArray(input),files=dropped?input:Array.prototype.slice.call(input.files||[]);if(!dropped)input.value='';
+    files=files.filter(function(f){return /\.xlsx$/i.test(f.name);});
+    if(!files.length){if(dropped)alert('엑셀(.xlsx) 파일만 올릴 수 있습니다');return;}
     var d=wsHsDays().find(function(x){return x.ds===_wsHsDs;});if(!d){alert('근무 통계에서 날짜를 먼저 고르세요');return;}
     try{if(!window.JSZip)await wsLoadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');}catch(e){alert('엑셀 처리 도구를 불러오지 못했습니다');return;}
     var msgs=[];
@@ -5124,6 +5127,14 @@ async function hwPrepUpload(input){
     }
     alert(d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+') 기준으로 만들었습니다\n\n'+msgs.join('\n\n'));
 }
+// 휴일 파일 준비 버튼에 파일 끌어놓기 (화면이 다시 그려져도 동작하도록 문서에서 위임)
+(function(){
+    var zone=function(e){return e.target&&e.target.closest?e.target.closest('.hw-drop'):null;};
+    var hasFiles=function(e){return e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>=0;};
+    document.addEventListener('dragover',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';z.classList.add('hw-over');});
+    document.addEventListener('dragleave',function(e){var z=zone(e);if(z&&!z.contains(e.relatedTarget))z.classList.remove('hw-over');});
+    document.addEventListener('drop',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();z.classList.remove('hw-over');hwPrepUpload(Array.prototype.slice.call(e.dataTransfer.files||[]));});
+})();
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
     var tab=document.getElementById('tab-workstatus');
