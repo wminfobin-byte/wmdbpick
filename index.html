@@ -5089,7 +5089,7 @@ async function hwAtt(zip,B,d){
         // 값 칸 = '특이사항' 병합(E:F) 바로 오른쪽 칸
         var endC=sp.c.cn;(P.post.match(/<mergeCell ref="[^"]+"/g)||[]).forEach(function(m){var g=m.match(/"([A-Z]+)(\d+):([A-Z]+)(\d+)"/);if(g&&g[1]===sp.c.col&&+g[2]===sp.r)endC=hwColN(g[3]);});
         var col=hwColL(endC+1);
-        put(col+sp.r,'s','* 매니저 출근 : '+ms.join(' | '));
+        put(col+sp.r,'s','* 매니저 출근 : '+ms.join(', '));
     }
     var xmlRows=P.order.map(function(r){
         var Rw=P.rows[r],cells=Rw.cells.map(function(c){var ref=c.col+r,s=set[ref];if(s){delete set[ref];return{cn:c.cn,x:hwCell(ref,hwStyle(c),s[0],s[1])};}return{cn:c.cn,x:hwCopyCell(c,ref)};});
