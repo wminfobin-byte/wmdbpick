@@ -4743,6 +4743,7 @@ function wsHsHTML(){
     var h='<div class="ws-card"><h3>근무 통계 (휴일·평일)</h3><p class="ws-sub">날짜를 고르면 그날 통계가 나옵니다 · 평일은 기본으로 <b>휴무 인원</b>(출근 1.0이 아닌 사람: 연차·휴가·반차 등, 퇴사 제외) · 근무일정(특근: 근태 + 붙여넣기·클릭 변경)과 CMS 근태를 등급·그룹 × 센터로 비교합니다 · <b>재적</b> = 이름에 (R_센터) 표시가 있고 담당이 있는 인원(괄호 안 센터 기준) · 모든 숫자는 <b>고른 날짜 기준</b> (그날 이후 입사자 제외, 그날 이후 퇴사자 포함) · <b style="color:#dc2626;">빨간 칸</b> = 두 표 숫자가 다름 (칸에 마우스를 올리면 해당 이름) · <b>복사</b>: 엑셀처럼 칸을 드래그(또는 클릭 후 Shift+클릭)로 선택 → Ctrl+C → 엑셀에 붙여넣기 · 보관된 달: '+months.map(function(m){return(+m.slice(5,7))+'월';}).join(', ')+' (근태파일을 올린 달은 최근 3개월까지 보관)</p>';
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><input type="date" value="'+_wsHsDs+'" min="'+days[0].ds+'" max="'+days[days.length-1].ds+'" onchange="if(this.value)wsHsPick(this.value);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     h+='<span style="font-size:0.85rem;color:var(--gray-600);">'+lab(d)+'</span>';
+    h+='<button class="btn btn-primary" style="font-size:0.76rem;padding:4px 10px;" onclick="wsHsDownloadWorkers()">출근자 리스트 다운로드</button>';
     if(d.wkDay){
         [['work','출근 인원'+(d.wkHol?' (평일공휴일출근)':'')],['off','휴무 인원'+(d.wkHol?' (평일공휴일휴무)':'')]].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
     }
@@ -4755,6 +4756,31 @@ function wsHsHTML(){
     h+='<div><div class="ws-hs-cap">CMS 근태 · '+what+'</div>'+wsHsTable('그룹',R.cms.p,R.plan.p,'',R.enr)+'</div>';
     h+='</div></div>';
     return h;
+}
+// 고른 날짜의 출근자 리스트 (근무일정 특근 기준 = 근무 통계 표와 같은 사람들) → 담당 DB | 센터 | 이름 엑셀
+// 담당 DB·이름은 근태파일 원본 그대로 (예: 제2외국어 | 당산 | (R_당산)홍길동)
+function wsHsWorkers(d){
+    var R=wsHsCalc(d,'work'),cen=WS_CENTERS_DEFAULT,raw={},info={};
+    wsHsPeople(d.ym).forEach(function(p){raw[wsName(p.name)]=String(p.name||'').trim();});
+    wsHistAt(d.ds).forEach(function(p){info[p.name]=p;});
+    var out=[];
+    ['영어','제2외국어','톡이즈'].forEach(function(g){
+        cen.forEach(function(c){
+            R.plan.p[g][c].slice().sort(function(a,b){return a.localeCompare(b,'ko');}).forEach(function(nm){
+                var p=info[nm]||{},full=raw[nm]||(p.rc?'(R_'+p.rc+')':'')+nm;
+                out.push([p.department||g,c,full]);
+            });
+        });
+    });
+    return out;
+}
+function wsHsDownloadWorkers(){
+    var d=wsHsDays().find(function(x){return x.ds===_wsHsDs;});if(!d){alert('날짜를 먼저 고르세요');return;}
+    var rows=wsHsWorkers(d);if(!rows.length){alert(d.mon+'/'+d.dom+' 출근자가 없습니다');return;}
+    var ws=XLSX.utils.aoa_to_sheet([['담당 DB','센터','이름']].concat(rows));
+    ws['!cols']=[{wch:12},{wch:8},{wch:18}];ws['!autofilter']={ref:'A1:C'+(rows.length+1)};
+    var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'출근자');
+    XLSX.writeFile(wb,'출근자 리스트_'+d.mon+'월 '+d.dom+'일('+WS_DOW[d.dow]+').xlsx');
 }
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
