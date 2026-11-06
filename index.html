@@ -2680,7 +2680,7 @@ function buildTierDistContext(wd){
 
 // ======================== 주간 예상표 (DB 예상안 양식) / 1인 분배 ========================
 // 1인 분배 규칙 — 2026년 7~10월 수기 예상표(15주) 분석 결과:
-//  · 하루 1인 총량은 A·B·C 동일, D는 C의 70% (GROUP_WEIGHT)
+//  · 하루 1인 총량은 A·B·C 동일, D는 평일 정상 근무일에만 C의 70% (GROUP_WEIGHT) — 휴일은 A~D 모두 동일
 //  · 분배 총량 = 누적 예상 유입 − 누적 분배 (일요일·휴무일 유입은 다음 근무일로 넘어감, 반올림 오차도 다음 날 보정)
 //  · 받는 계열: 평일 A 0~5 / B 1~5 / C 3~5 / D 4~5, 휴일(토·일·공휴일 근무) A 0~5 / B 1~5 / C·D 2~5
 //  · 평일은 학습한 등급별 계열 비중에서, 휴일은 범위 안 균등에서 출발해
@@ -2762,11 +2762,13 @@ function ysAllocate(E,S,n,shares,w,secW){
         var ns=n['제2외국어'][i]||0;
         if(ns>0)[0,1].forEach(function(k){var v=Math.max(0,Math.round((cS[k]-cSD[k])/ns));(k?sec.low:sec.up)[i]=v;cSD[k]+=v*ns;});
         var need=cumT.map(function(t,s){return Math.max(0,t-cumD[s]);}),D=ysSum(need),den=0;
-        YS_GRADES.forEach(function(g){den+=(n[g][i]||0)*(GROUP_WEIGHT[g]||1);});
+        // 휴일(토·일·공휴일 근무)은 A~D 모두 1인 총량 동일, D 70%는 평일 정상 근무일에만
+        var hol=ysIsHol(i),gw=function(g){return hol?1:(GROUP_WEIGHT[g]||1);};
+        YS_GRADES.forEach(function(g){den+=(n[g][i]||0)*gw(g);});
         if(den<=0||D<=0)continue;
-        var hol=ysIsHol(i),el=YS_ELIG[hol?'hol':'wk'],x={},tg={};
+        var el=YS_ELIG[hol?'hol':'wk'],x={},tg={};
         YS_GRADES.forEach(function(g){
-            tg[g]=D*(GROUP_WEIGHT[g]||1)/den;
+            tg[g]=D*gw(g)/den;
             var pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:(hol?1:(shares[g][s]||0));});
             if(!(ysSum(pr)>0))pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:1;});
             var ps=ysSum(pr);x[g]=pr.map(function(v){return v/ps*tg[g];});
