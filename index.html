@@ -2853,7 +2853,7 @@ async function downloadYesangExcel(){
         var P=ysBuildPlan();
         if(P.st.missing.length&&!confirm('근태파일에 없는 날짜가 있어 인원표 일부가 비어 있습니다: '+P.st.missing.join(', ')+'\n그래도 받을까요?'))return;
         if(!window.ExcelJS)await wsLoadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
-        var res=await fetch('yesang_template.xlsx?v=3');if(!res.ok)throw new Error('양식 파일(yesang_template.xlsx)을 불러오지 못했습니다');
+        var res=await fetch('yesang_template.xlsx?v=4');if(!res.ok)throw new Error('양식 파일(yesang_template.xlsx)을 불러오지 못했습니다');
         var wb=new ExcelJS.Workbook();await wb.xlsx.load(await res.arrayBuffer());
         var ws=wb.getWorksheet('DB 예상안');
         var put=function(a,v){ws.getCell(a).value=(v===undefined||v===null||v==='')?null:v;},nz=function(v){return v?v:null;};
