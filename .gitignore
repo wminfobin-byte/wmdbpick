@@ -3,3 +3,9 @@
 .DS_Store
 Thumbs.db
 node_modules/
+
+# 업무용 엑셀(직원 이름 포함) — 공개 저장소에 올리지 않음. 양식 파일만 예외
+*.xlsx
+*.xls
+~$*
+!yesang_template.xlsx

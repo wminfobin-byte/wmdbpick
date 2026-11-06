@@ -4744,6 +4744,7 @@ function wsHsHTML(){
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><input type="date" value="'+_wsHsDs+'" min="'+days[0].ds+'" max="'+days[days.length-1].ds+'" onchange="if(this.value)wsHsPick(this.value);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     h+='<span style="font-size:0.85rem;color:var(--gray-600);">'+lab(d)+'</span>';
     h+='<button class="btn btn-primary" style="font-size:0.76rem;padding:4px 10px;" onclick="wsHsDownloadWorkers()">출근자 리스트 다운로드</button>';
+    h+='<label class="btn" style="font-size:0.76rem;padding:4px 10px;background:#f97316;color:#fff;cursor:pointer;" title="시간대별 성과 · 휴무 개인별 성과 · 휴일근무 근태보고 파일을 한꺼번에 선택하면 이 날짜 기준으로 채워서 같은 이름으로 다시 받습니다">휴일 파일 준비 (3종 올리기)<input type="file" accept=".xlsx" multiple style="display:none;" onchange="hwPrepUpload(this)"></label>';
     if(d.wkDay){
         [['work','출근 인원'+(d.wkHol?' (평일공휴일출근)':'')],['off','휴무 인원'+(d.wkHol?' (평일공휴일휴무)':'')]].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
     }
@@ -4781,6 +4782,347 @@ function wsHsDownloadWorkers(){
     ws['!cols']=[{wch:12},{wch:8},{wch:18}];ws['!autofilter']={ref:'A1:C'+(rows.length+1)};
     var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'출근자');
     XLSX.writeFile(wb,'출근자 리스트_'+d.mon+'월 '+d.dom+'일('+WS_DOW[d.dow]+').xlsx');
+}
+
+// ======================== 휴일근무 파일 준비 (hw*) ========================
+// 주말 근무자가 쓰는 엑셀 3종을 올리면, 근무 통계에서 고른 날짜 기준으로 명단·날짜를 채워 같은 이름으로 다시 내려준다.
+//  · 시간대별 성과(개인별·db수 시트) : db수·계약수 3행부터 삭제, 센터별·그룹별 B2 날짜, 그룹 시트 전체 명단, 개인별 E6~ 센터별 출근자
+//  · 휴무 개인별 성과(날짜 시트 누적) : 마지막 시트를 본떠 새 날짜 시트 추가 (센터별 출근자 + 소계 + 총계)
+//  · 휴일근무 근태보고(근태보고 시트) : 마지막 시트를 복사해 새 날짜 시트 추가 (총원·신청·매니저)
+// 엑셀 원본 XML을 직접 고친다 → 손대지 않은 시트·서식·수식·차트는 그대로 남는다.
+// 출근자 = 근무일정(특근) 출근 (wsHsWorkers와 같음), 총원·그룹 명단 = 그날이 속한 달의 근태파일 전체
+function hwEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function hwUnesc(s){return String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');}
+function hwColN(c){var n=0;for(var i=0;i<c.length;i++)n=n*26+(c.charCodeAt(i)-64);return n;}
+function hwColL(n){var s='';while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=(n-m-1)/26;}return s;}
+// 수식 안의 상대 참조를 dr행·dc열 옮김 ($ 고정·따옴표 안 문자열·함수 이름은 그대로)
+function hwShiftF(f,dr,dc){
+    if(!dr&&!dc)return f;
+    return f.split('"').map(function(part,i){
+        if(i%2)return part;
+        return part.replace(/(^|[^A-Za-z0-9_.])(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g,function(m,p,d1,col,d2,row){
+            var c=d1?col:hwColL(hwColN(col)+dc),r=d2?row:String(+row+dr);
+            return p+d1+c+d2+r;
+        });
+    }).join('"');
+}
+// 시트 XML 파싱: 행/셀 + 공유 수식 펼치기
+function hwParseRows(xml){
+    var sd=xml.match(/<sheetData>([\s\S]*?)<\/sheetData>|<sheetData\/>/),rows={},order=[];
+    var body=sd?(sd[1]||''):'';
+    var re=/<row ([^>]*?)(\/>|>([\s\S]*?)<\/row>)/g,m;
+    while((m=re.exec(body))){
+        var r=+m[1].match(/\br="(\d+)"/)[1],cells=[],cre=/<c ([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g,cm,inner=m[3]||'';
+        while((cm=cre.exec(inner))){
+            var at=cm[1],ref=at.match(/\br="([A-Z]+)(\d+)"/);
+            cells.push({col:ref[1],cn:hwColN(ref[1]),attrs:at,inner:cm[3]||''});
+        }
+        rows[r]={r:r,attrs:m[1],cells:cells};order.push(r);
+    }
+    // 공유 수식: 마스터 찾기
+    var masters={};
+    order.forEach(function(r){rows[r].cells.forEach(function(c){var fm=c.inner.match(/<f([^>]*)>([^<]*)<\/f>/);if(fm&&/t="shared"/.test(fm[1])){var si=fm[1].match(/si="(\d+)"/)[1];masters[si]={r:r,cn:c.cn,f:hwUnesc(fm[2])};}});});
+    order.forEach(function(r){rows[r].cells.forEach(function(c){
+        var fm=c.inner.match(/<f([^>]*)>([^<]*)<\/f>|<f([^>]*)\/>/);if(!fm){c.f=null;return;}
+        var at=fm[1]||fm[3]||'';
+        if(/t="shared"/.test(at)){var si=at.match(/si="(\d+)"/)[1],M=masters[si];c.f=M?hwShiftF(M.f,r-M.r,c.cn-M.cn):null;}
+        else if(/t="array"/.test(at))c.f=null; // 배열 수식은 그대로 둘 수 없어 값만 (현재 양식엔 없음)
+        else c.f=hwUnesc(fm[2]||'');
+    });});
+    return {rows:rows,order:order,pre:xml.slice(0,sd?sd.index:0),post:xml.slice(sd?sd.index+sd[0].length:0)};
+}
+function hwStyle(c){var m=c&&c.attrs.match(/\bs="(\d+)"/);return m?m[1]:null;}
+function hwCell(ref,s,kind,v){ // kind: 'e' 빈칸 / 's' 문자 / 'n' 숫자 / 'f' 수식
+    var a='<c r="'+ref+'"'+(s!=null?' s="'+s+'"':'');
+    if(kind==='s')return a+' t="inlineStr"><is><t xml:space="preserve">'+hwEsc(v)+'</t></is></c>';
+    if(kind==='n')return a+'><v>'+v+'</v></c>';
+    if(kind==='f')return a+'><f>'+hwEsc(v)+'</f></c>';
+    return a+'/>';
+}
+// 셀을 원래 모양대로 다시 씀 (공유 수식은 펼친 수식으로, 계산값은 비움 → 열 때 다시 계산)
+function hwCopyCell(c,ref){
+    var s=hwStyle(c);
+    if(c.f!==null&&c.f!==undefined)return hwCell(ref,s,'f',c.f);
+    if(/<f/.test(c.inner))return hwCell(ref,s,'e');
+    return '<c '+c.attrs.replace(/\br="[A-Z]+\d+"/,'r="'+ref+'"')+(c.inner?'>'+c.inner+'</c>':'/>');
+}
+function hwRowXml(r,attrs,cells){
+    attrs=attrs.replace(/\br="\d+"/,'r="'+r+'"').replace(/\s*spans="[^"]*"/,'');
+    cells.sort(function(a,b){return a.cn-b.cn;});
+    return '<row '+attrs+'>'+cells.map(function(c){return c.x;}).join('')+'</row>';
+}
+function hwSST(xml){var out=[];if(!xml)return out;(xml.match(/<si>[\s\S]*?<\/si>/g)||[]).forEach(function(si){out.push(hwUnesc((si.match(/<t[^>]*>[^<]*<\/t>/g)||[]).map(function(t){return t.replace(/<[^>]+>/g,'');}).join('')));});return out;}
+function hwCellText(c,sst){
+    if(!c)return'';
+    if(/t="s"/.test(c.attrs)){var v=c.inner.match(/<v>(\d+)<\/v>/);return v?sst[+v[1]]||'':'';}
+    if(/t="inlineStr"/.test(c.attrs))return hwUnesc((c.inner.match(/<t[^>]*>([^<]*)<\/t>/)||[])[1]||'');
+    var v2=c.inner.match(/<v>([^<]*)<\/v>/);return v2?hwUnesc(v2[1]):'';
+}
+async function hwBook(zip){
+    var wb=await zip.file('xl/workbook.xml').async('string'),rels=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    var sheets=[],re=/<sheet ([^>]*?)\/>/g,m;
+    while((m=re.exec(wb))){
+        var at=m[1],name=hwUnesc(at.match(/name="([^"]*)"/)[1]),rid=at.match(/r:id="([^"]+)"/)[1];
+        var rm=rels.match(new RegExp('<Relationship [^>]*Id="'+rid+'"[^>]*>'))[0],tgt=rm.match(/Target="([^"]+)"/)[1];
+        sheets.push({name:name,rid:rid,id:+at.match(/sheetId="(\d+)"/)[1],path:tgt.charAt(0)==='/'?tgt.slice(1):'xl/'+tgt,hidden:/state="/.test(at)});
+    }
+    var sf=zip.file('xl/sharedStrings.xml');
+    return {wb:wb,rels:rels,sheets:sheets,sst:hwSST(sf?await sf.async('string'):'')};
+}
+// 계산 체인 삭제(셀 위치가 바뀌어도 오류 없도록) + 열 때 전체 재계산
+async function hwFinish(zip,B){
+    var wb=B.wb.replace(/<calcPr([^>]*?)\s*fullCalcOnLoad="[^"]*"/,'<calcPr$1');
+    wb=/<calcPr/.test(wb)?wb.replace(/<calcPr/,'<calcPr fullCalcOnLoad="1"'):wb.replace('</workbook>','<calcPr fullCalcOnLoad="1"/></workbook>');
+    zip.file('xl/workbook.xml',wb);
+    if(zip.file('xl/calcChain.xml')){
+        zip.remove('xl/calcChain.xml');
+        zip.file('xl/_rels/workbook.xml.rels',B.rels.replace(/<Relationship [^>]*calcChain[^>]*\/>/,''));
+        var ct=await zip.file('[Content_Types].xml').async('string');zip.file('[Content_Types].xml',ct.replace(/<Override [^>]*calcChain[^>]*\/>/,''));
+    }else zip.file('xl/_rels/workbook.xml.rels',B.rels);
+}
+// 시트 추가 (맨 뒤, 활성 탭으로)
+async function hwAddSheet(zip,B,name,xml){
+    var used={};B.sheets.forEach(function(s){used[s.name]=1;});
+    var nm=name,k=2;while(used[nm])nm=name+' ('+(k++)+')';
+    var n=1;while(zip.file('xl/worksheets/sheet'+n+'.xml'))n++;
+    var path='xl/worksheets/sheet'+n+'.xml',rid='rIdHw'+n,sid=Math.max.apply(null,B.sheets.map(function(s){return s.id;}))+1;
+    // 다른 시트의 '선택됨' 표시 해제 (안 하면 여러 시트가 묶여 선택된 상태로 열림)
+    for(var i=0;i<B.sheets.length;i++){var f=zip.file(B.sheets[i].path);if(!f)continue;var x=await f.async('string');if(/tabSelected="1"/.test(x))zip.file(B.sheets[i].path,x.replace(/\s*tabSelected="1"/g,''));}
+    zip.file(path,xml);
+    B.wb=B.wb.replace('</sheets>','<sheet name="'+hwEsc(nm)+'" sheetId="'+sid+'" r:id="'+rid+'"/></sheets>');
+    B.wb=B.wb.replace(/(<workbookView[^>]*?)\s*activeTab="\d+"/,'$1').replace(/<workbookView/,'<workbookView activeTab="'+B.sheets.length+'"');
+    B.rels=B.rels.replace('</Relationships>','<Relationship Id="'+rid+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+n+'.xml"/></Relationships>');
+    var ct=await zip.file('[Content_Types].xml').async('string');
+    zip.file('[Content_Types].xml',ct.replace('</Types>','<Override PartName="/'+path+'" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'));
+    var ap=zip.file('docProps/app.xml');
+    if(ap){var a=await ap.async('string');var m=a.match(/<TitlesOfParts><vt:vector size="(\d+)"/);
+        if(m){a=a.replace(/<TitlesOfParts><vt:vector size="\d+"/,'<TitlesOfParts><vt:vector size="'+(+m[1]+1)+'"').replace(/<\/vt:vector><\/TitlesOfParts>/,'<vt:lpstr>'+hwEsc(nm)+'</vt:lpstr></vt:vector></TitlesOfParts>');
+            a=a.replace(/(<vt:lpstr>(?:워크시트|Worksheets)<\/vt:lpstr><\/vt:variant><vt:variant><vt:i4>)(\d+)/,function(x,p,c){return p+(+c+1);});zip.file('docProps/app.xml',a);}}
+    B.sheets.push({name:nm,path:path,id:sid,rid:rid});
+    return nm;
+}
+// 새 시트용 XML 앞뒤: 관계(r:id) 참조 제거, 선택 탭 지정
+function hwSheetShell(pre,post,dim){
+    pre=pre.replace(/<dimension ref="[^"]*"\/>/,'<dimension ref="'+dim+'"/>').replace(/\s*tabSelected="\d"/g,'').replace(/<sheetView /,'<sheetView tabSelected="1" ').replace(/<selection [^>]*\/>/g,'');
+    post=post.replace(/\s*r:id="[^"]*"/g,'').replace(/<drawing\/>|<legacyDrawing\/>|<legacyDrawingHF\/>|<picture\/>/g,'').replace(/<tableParts[\s\S]*?<\/tableParts>/,'');
+    return {pre:pre,post:post};
+}
+function hwSheetName(d){return d.ds.slice(2,4)+d.ds.slice(5,7)+d.ds.slice(8,10);}
+function hwPeopleOfMonth(d){ // 그날이 속한 달 근태파일의 전체 인원 (보관된 퇴사자 제외)
+    if(d.ym===attendanceMonth)return attendanceData;
+    var a=wsAttArchive[d.ym];return a&&a.people?a.people:[];
+}
+var HW_GROUP_ORDER=['영어','제2외국어','톡이즈'];
+// 센터별 출근자 [{c, list:[[그룹,센터,이름]]}] — 센터 순서는 order(양식에 있던 순서) 우선
+function hwByCenter(d,order){
+    var W=wsHsWorkers(d),cen=(order||[]).slice();
+    WS_CENTERS_DEFAULT.forEach(function(c){if(cen.indexOf(c)<0)cen.push(c);});
+    return cen.map(function(c){
+        var l=W.filter(function(x){return x[1]===c;});
+        l.sort(function(a,b){return HW_GROUP_ORDER.indexOf(a[0])-HW_GROUP_ORDER.indexOf(b[0]);}); // 안정 정렬: 그룹 안은 이름순 유지
+        return {c:c,list:l};
+    }).filter(function(b){return b.list.length;});
+}
+
+// ---------- 1) 시간대별 성과 ----------
+async function hwPerf(zip,B,d){
+    var S=function(n){return B.sheets.find(function(s){return s.name===n;});},log=[];
+    // db수·계약수: 2행까지만 남김
+    for(var nm of ['db수','계약수']){
+        var sh=S(nm);if(!sh)continue;var x=await zip.file(sh.path).async('string'),P=hwParseRows(x),cnt=0;
+        var body=P.order.filter(function(r){if(r>2){cnt++;return false;}return true;}).map(function(r){var R=P.rows[r];return hwRowXml(r,R.attrs,R.cells.map(function(c){return{cn:c.cn,x:hwCopyCell(c,c.col+r)};}));}).join('');
+        var lastC=0;P.order.forEach(function(r){if(r<=2)P.rows[r].cells.forEach(function(c){lastC=Math.max(lastC,c.cn);});});
+        zip.file(sh.path,P.pre.replace(/<dimension ref="[^"]*"\/>/,'<dimension ref="A1:'+hwColL(Math.max(1,lastC))+'2"/>')+'<sheetData>'+body+'</sheetData>'+P.post);
+        log.push(nm+' '+cnt+'행 삭제');
+    }
+    // 센터별·그룹별 B2 = 날짜
+    for(var nm2 of ['센터별','그룹별']){
+        var s2=S(nm2);if(!s2)continue;var x2=await zip.file(s2.path).async('string');
+        var c2=x2.match(/<c r="B2"[^>]*?(\/>|>[\s\S]*?<\/c>)/);
+        if(c2){var st=(c2[0].match(/\bs="(\d+)"/)||[])[1];x2=x2.replace(c2[0],hwCell('B2',st,'n',ysSerial(d.ds)));zip.file(s2.path,x2);log.push(nm2+' 날짜');}
+    }
+    // 그룹: 근태파일 전체 명단 (C=이름, D=담당 DB)
+    var sg=S('그룹');
+    if(sg&&!hwPeopleOfMonth(d).length)log.push('그룹: 그 달 근태파일이 없어 건드리지 않음');
+    else if(sg){
+        var xg=await zip.file(sg.path).async('string'),PG=hwParseRows(xg),T=PG.rows[4]||PG.rows[PG.order.find(function(r){return r>3;})];
+        var stOf=function(col){var c=T&&T.cells.find(function(z){return z.col===col;});return c?hwStyle(c):null;};
+        var ppl=hwPeopleOfMonth(d).filter(function(p){return !p._retired&&wsGroupOf(p);});
+        var bodyG=PG.order.filter(function(r){return r<=3;}).map(function(r){var R=PG.rows[r];return hwRowXml(r,R.attrs,R.cells.map(function(c){return{cn:c.cn,x:hwCopyCell(c,c.col+r)};}));}).join('');
+        ppl.forEach(function(p,i){
+            var r=4+i,g=wsGroupOf(p);
+            bodyG+=hwRowXml(r,T?T.attrs:'r="'+r+'"',[
+                {cn:1,x:hwCell('A'+r,stOf('A'),'f','F'+r)},{cn:2,x:hwCell('B'+r,stOf('B'),'f','D'+r)},
+                {cn:3,x:hwCell('C'+r,stOf('C'),'s',String(p.name||'').trim())},{cn:4,x:hwCell('D'+r,stOf('D'),'s',g)},
+                {cn:5,x:hwCell('E'+r,stOf('E'),'f','B'+r)},{cn:6,x:hwCell('F'+r,stOf('F'),'f','MID(C'+r+',4,2)')}]);
+        });
+        var last=3+ppl.length;
+        var postG=PG.post.replace(/<autoFilter ref="[^"]*"/,'<autoFilter ref="A3:F'+last+'"');
+        zip.file(sg.path,PG.pre.replace(/<dimension ref="[^"]*"\/>/,'<dimension ref="A1:F'+last+'"/>')+'<sheetData>'+bodyG+'</sheetData>'+postG);
+        var gi=B.sheets.indexOf(sg);
+        B.wb=B.wb.replace(new RegExp('(<definedName name="_xlnm._FilterDatabase" localSheetId="'+gi+'"[^>]*>)[^<]*'),'$1그룹!$A$3:$F$'+last);
+        log.push('그룹 '+ppl.length+'명');
+    }
+    // 개인별: E6~ 센터 블록 (출근자 + 여유 3행 + ▲ 센터), 남는 행은 빈 수식 행
+    var sp=S('개인별');
+    if(sp){
+        var xp=await zip.file(sp.path).async('string'),PP=hwParseRows(xp),txt=function(r,col){var R=PP.rows[r];return R?hwCellText(R.cells.find(function(c){return c.col===col;}),B.sst):'';};
+        var tri=[],order=[];PP.order.forEach(function(r){var t=txt(r,'E');if(r>=6&&/^▲/.test(t)){tri.push(r);order.push(t.replace(/^▲\s*/,'').trim());}});
+        if(!tri.length)throw new Error('개인별 시트에서 "▲ 센터" 줄을 찾지 못했습니다');
+        var END=106;for(var r0=tri[tri.length-1]+1;r0<200;r0++){if(!PP.rows[r0]||!PP.rows[r0].cells.some(function(c){return c.f;}))break;END=r0;} // 마지막 빈 수식 행
+        var wRow=null;for(var r1=6;r1<tri[0];r1++){if(txt(r1,'G')){wRow=r1;if(r1>6)break;}} // 사람 행 본보기 (블록 둘째 줄 우선)
+        var eRow=null;for(var r2=6;r2<tri[0];r2++){if(!txt(r2,'G')&&PP.rows[r2]){eRow=r2;break;}}if(!eRow)eRow=END;
+        var TW=PP.rows[wRow],TE=PP.rows[eRow],TT=PP.rows[tri[0]];
+        var blocks=hwByCenter(d,order),need=blocks.reduce(function(a,b){return a+b.list.length+1;},0),cap=END-6+1;
+        var pad=Math.max(0,Math.min(3,Math.floor((cap-need)/Math.max(1,blocks.length))));
+        if(need>cap)throw new Error('개인별 시트 자리가 모자랍니다 (출근자 '+need+'행 > '+cap+'행)');
+        var mk=function(T,r,vals){ // 본보기 행 T를 r행으로: 수식은 행 이동, E/F/G는 vals
+            return hwRowXml(r,T.attrs,T.cells.map(function(c){
+                var ref=c.col+r;
+                if(vals&&vals[c.col]!==undefined)return{cn:c.cn,x:vals[c.col]===''?hwCell(ref,hwStyle(c),'e'):hwCell(ref,hwStyle(c),'s',vals[c.col])};
+                if(c.f)return{cn:c.cn,x:hwCell(ref,hwStyle(c),'f',hwShiftF(c.f,r-T.r,0))};
+                return{cn:c.cn,x:/<f/.test(c.inner)||/t="s"|inlineStr/.test(c.attrs)||/<v>/.test(c.inner)?hwCell(ref,hwStyle(c),'e'):hwCopyCell(c,ref)};
+            }));
+        };
+        var out=[],r=6;
+        blocks.forEach(function(b){
+            b.list.forEach(function(x){out.push(mk(TW,r,{E:x[0],F:x[1],G:x[2]}));r++;});
+            for(var k=0;k<pad;k++){out.push(mk(TE,r,{E:'',F:'',G:''}));r++;}
+            out.push(mk(TT,r,{E:'▲ '+b.c}));r++;
+        });
+        while(r<=END){out.push(mk(TE,r,{E:'',F:'',G:''}));r++;}
+        var keep=PP.order.filter(function(x){return x<6||x>END;}).map(function(x){var R=PP.rows[x];return{r:x,xml:hwRowXml(x,R.attrs,R.cells.map(function(c){return{cn:c.cn,x:hwCopyCell(c,c.col+x)};}))};});
+        var all=keep.filter(function(k){return k.r<6;}).map(function(k){return k.xml;}).concat(out).concat(keep.filter(function(k){return k.r>END;}).map(function(k){return k.xml;}));
+        zip.file(sp.path,PP.pre+'<sheetData>'+all.join('')+'</sheetData>'+PP.post);
+        log.push('개인별 '+blocks.map(function(b){return b.c+' '+b.list.length;}).join(', '));
+    }
+    return log;
+}
+
+// ---------- 2) 휴무 개인별 성과: 새 날짜 시트 ----------
+async function hwIndiv(zip,B,d){
+    var vis=B.sheets.filter(function(s){return !s.hidden;}),T=vis[vis.length-1];
+    var x=await zip.file(T.path).async('string'),P=hwParseRows(x),txt=function(r,col){var R=P.rows[r];return R?hwCellText(R.cells.find(function(c){return c.col===col;}),B.sst):'';};
+    // 본보기: 사람 행(5), 소계 행(첫 SUM 행), 총계 행('총 n 건' 있는 행)
+    var sub=P.order.find(function(r){return r>=5&&P.rows[r].cells.some(function(c){return c.col==='E'&&c.f&&/^SUM\(/i.test(c.f);});});
+    var tot=P.order.find(function(r){return P.rows[r].cells.some(function(c){return c.col==='K'&&/총/.test(hwCellText(c,B.sst));});});
+    if(!sub||!tot)throw new Error('개인별 성과 마지막 시트('+T.name+')에서 소계·총계 줄을 찾지 못했습니다');
+    var order=[];P.order.forEach(function(r){if(r>=5&&r<tot){var c=txt(r,'C');if(c&&order.indexOf(c)<0&&WS_CENTERS_DEFAULT.indexOf(c)>=0)order.push(c);}});
+    var TW=P.rows[5],TS=P.rows[sub],TT=P.rows[tot],LC=12; // L열(12)부터 오른쪽 표는 그대로 둔다
+    var right={};P.order.forEach(function(r){var cs=P.rows[r].cells.filter(function(c){return c.cn>=LC;});if(cs.length)right[r]=cs;});
+    var blocks=hwByCenter(d,order),rows={},subs=[],r=5;
+    var put=function(rr,T,cells){rows[rr]={T:T,cells:cells};};
+    var sty=function(T,col){var c=T.cells.find(function(z){return z.col===col;});return c?hwStyle(c):null;};
+    blocks.forEach(function(b){
+        var s0=r;
+        b.list.forEach(function(x){
+            put(r,TW,['B','C','D','E','F','G','H','I','J'].map(function(col){var v={B:x[0],C:x[1],D:x[2]}[col];return{cn:hwColN(col),x:v!==undefined?hwCell(col+r,sty(TW,col),'s',v):hwCell(col+r,sty(TW,col),'e')};}));r++;
+        });
+        var e0=r-1,cs=[];
+        ['B','C','D'].forEach(function(col){cs.push({cn:hwColN(col),x:hwCell(col+r,sty(TS,col),'e')});});
+        ['E','F','H','I'].forEach(function(col){cs.push({cn:hwColN(col),x:hwCell(col+r,sty(TS,col),'f','SUM('+col+s0+':'+col+e0+')')});});
+        cs.push({cn:7,x:hwCell('G'+r,sty(TS,'G'),'f','F'+r+'/E'+r)});cs.push({cn:10,x:hwCell('J'+r,sty(TS,'J'),'f','I'+r+'/E'+r)});
+        put(r,TS,cs);subs.push(r);r++;
+    });
+    var tr=r,tc=[];
+    ['B','C','D'].forEach(function(col){tc.push({cn:hwColN(col),x:hwCell(col+tr,sty(TT,col),'e')});});
+    ['E','F','H','I'].forEach(function(col){tc.push({cn:hwColN(col),x:hwCell(col+tr,sty(TT,col),'f',subs.map(function(s){return col+s;}).join('+')||'0')});});
+    tc.push({cn:7,x:hwCell('G'+tr,sty(TT,'G'),'f','F'+tr+'/E'+tr)});tc.push({cn:10,x:hwCell('J'+tr,sty(TT,'J'),'f','I'+tr+'/E'+tr)});
+    tc.push({cn:11,x:hwCell('K'+tr,sty(TT,'K'),'s','총 n 건')});
+    put(tr,TT,tc);
+    // 1~4행은 그대로, 오른쪽 표(L열~)는 같은 행에 그대로
+    var maxR=Math.max(tr,Math.max.apply(null,Object.keys(right).map(Number).concat([0]))),xmlRows=[];
+    for(var rr=1;rr<=maxR;rr++){
+        var cells=[],attrs=null;
+        if(rr<5&&P.rows[rr]){attrs=P.rows[rr].attrs;P.rows[rr].cells.forEach(function(c){if(c.cn<LC)cells.push({cn:c.cn,x:c.col==='B'&&rr===2?hwCell('B2',hwStyle(c),'s','  * '+d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+') 휴일근무 개인별성과'):hwCopyCell(c,c.col+rr)});});}
+        else if(rows[rr]){attrs=rows[rr].T.attrs;cells=rows[rr].cells;}
+        (right[rr]||[]).forEach(function(c){cells.push({cn:c.cn,x:hwCopyCell(c,c.col+rr)});});
+        if(!attrs&&cells.length)attrs=(P.rows[rr]||TW).attrs;
+        if(attrs)xmlRows.push(hwRowXml(rr,attrs,cells));
+    }
+    var sh=hwSheetShell(P.pre,P.post,'B1:'+hwColL(Math.max(11,Math.max.apply(null,P.order.map(function(q){return Math.max.apply(null,P.rows[q].cells.map(function(c){return c.cn;}).concat([0]));})))) +maxR);
+    var post=sh.post;
+    // 병합: 머리글(1~4행)·오른쪽 표 병합은 유지, 총계 B:D 병합은 새 위치로
+    post=post.replace(/<mergeCells[^>]*>([\s\S]*?)<\/mergeCells>/,function(m,inner){
+        var refs=(inner.match(/ref="[^"]+"/g)||[]).map(function(a){return a.slice(5,-1);}).filter(function(rg){var a=rg.split(':')[0].match(/([A-Z]+)(\d+)/);return +a[2]<5||hwColN(a[1])>=LC;});
+        refs.push('B'+tr+':D'+tr);
+        return '<mergeCells count="'+refs.length+'">'+refs.map(function(rg){return'<mergeCell ref="'+rg+'"/>';}).join('')+'</mergeCells>';
+    });
+    // 조건부 서식: 이름(D) 중복 표시는 새 명단 범위 하나로
+    var dx=(post.match(/<conditionalFormatting sqref="D[^"]*"><cfRule type="duplicateValues" dxfId="(\d+)"/)||[])[1];
+    post=post.replace(/<conditionalFormatting sqref="D[^"]*">[\s\S]*?<\/conditionalFormatting>/g,'');
+    // 엑셀 XML 순서: mergeCells → phoneticPr → conditionalFormatting → dataValidations → hyperlinks → printOptions → pageMargins
+    if(dx&&tr>5)post=post.replace(/<dataValidations|<hyperlinks|<printOptions|<pageMargins|<pageSetup|<\/worksheet>/,function(m){return'<conditionalFormatting sqref="D5:D'+(tr-1)+'"><cfRule type="duplicateValues" dxfId="'+dx+'" priority="1"/></conditionalFormatting>'+m;});
+    var nm=await hwAddSheet(zip,B,hwSheetName(d),sh.pre+'<sheetData>'+xmlRows.join('')+'</sheetData>'+post);
+    return ['새 시트 '+nm+' (본보기 '+T.name+') · '+blocks.map(function(b){return b.c+' '+b.list.length;}).join(', ')+' · 총계 '+tr+'행'];
+}
+
+// ---------- 3) 휴일근무 근태보고: 새 날짜 시트 ----------
+async function hwAtt(zip,B,d){
+    var vis=B.sheets.filter(function(s){return !s.hidden;}),T=vis[vis.length-1];
+    var x=await zip.file(T.path).async('string'),P=hwParseRows(x);
+    var find=function(re){var hit=null;P.order.some(function(r){var c=P.rows[r].cells.find(function(z){return re.test(hwCellText(z,B.sst).replace(/\s/g,''));});if(c){hit={r:r,c:c};return true;}return false;});return hit;};
+    var head=find(/^당산$/);if(!head)throw new Error('근태보고 마지막 시트('+T.name+')에서 센터 머리글(당산…)을 찾지 못했습니다');
+    var cenCol={};P.rows[head.r].cells.forEach(function(c){var t=hwCellText(c,B.sst).trim();if(WS_CENTERS_DEFAULT.indexOf(t)>=0)cenCol[t]=c.col;});
+    var R=wsHsCalc(d,'work'),set={}; // set['G9']=['n',값] 등
+    var put=function(ref,kind,v){set[ref]=[kind,v];};
+    // 날짜 (mm/dd (aaa) 서식 칸)
+    var dc=find(/세일즈마케팅실근태|근태현황/);var dateRef=null;
+    P.order.some(function(r){return P.rows[r].cells.some(function(c){if(/<v>\d{5}<\/v>/.test(c.inner)&&!c.f&&r<head.r){dateRef=c.col+r;return true;}return false;});});
+    if(dateRef)put(dateRef,'n',ysSerial(d.ds));
+    // 총원 = 근태파일 전체 인원, 이름의 (R_센터) 기준 (담당 공란 포함)
+    var tot=find(/^총원$/),ppl=hwPeopleOfMonth(d).filter(function(p){return !p._retired;});
+    if(tot)Object.keys(cenCol).forEach(function(c){put(cenCol[c]+tot.r,'n',ppl.filter(function(p){return wsRC(p.name)===c;}).length);});
+    // 그룹별 신청 = 근무일정(특근) 출근, 출근 칸은 비움 (당일 담당자가 입력)
+    [['영어','영어'],['제2외국어','제2외국어'],['톡이즈','톡이즈']].forEach(function(g){
+        var a=find(new RegExp('^'+g[0]+'신청$')),b=find(new RegExp('^'+g[0]+'출근$'));
+        Object.keys(cenCol).forEach(function(c){
+            if(a){var n=R.plan.p[g[1]][c].length;put(cenCol[c]+a.r,n?'n':'e',n);}
+            if(b)put(cenCol[c]+b.r,'e');
+        });
+    });
+    // 특이사항 = 매니저 출근 (휴일 담당자의 수도권·중부 매니저)
+    var sp=find(/^특이사항$/);
+    if(sp){
+        var ms=['sudo','jung'].map(function(k){var n=wsMgrName(d.ds,{k:k});if(!n)return'';var e=wsDirGet(n);return(e.center?e.center+' ':'')+n;}).filter(Boolean);
+        // 값 칸 = '특이사항' 병합(E:F) 바로 오른쪽 칸
+        var endC=sp.c.cn;(P.post.match(/<mergeCell ref="[^"]+"/g)||[]).forEach(function(m){var g=m.match(/"([A-Z]+)(\d+):([A-Z]+)(\d+)"/);if(g&&g[1]===sp.c.col&&+g[2]===sp.r)endC=hwColN(g[3]);});
+        var col=hwColL(endC+1);
+        put(col+sp.r,'s','* 매니저 출근 : '+ms.join(' | '));
+    }
+    var xmlRows=P.order.map(function(r){
+        var Rw=P.rows[r],cells=Rw.cells.map(function(c){var ref=c.col+r,s=set[ref];if(s){delete set[ref];return{cn:c.cn,x:hwCell(ref,hwStyle(c),s[0],s[1])};}return{cn:c.cn,x:hwCopyCell(c,ref)};});
+        Object.keys(set).forEach(function(ref){var m=ref.match(/([A-Z]+)(\d+)/);if(+m[2]===r){cells.push({cn:hwColN(m[1]),x:hwCell(ref,null,set[ref][0],set[ref][1])});delete set[ref];}});
+        return hwRowXml(r,Rw.attrs,cells);
+    });
+    var dim=(P.pre.match(/<dimension ref="([^"]*)"\/>/)||[])[1]||'A1';
+    var sh=hwSheetShell(P.pre,P.post,dim);
+    var nm=await hwAddSheet(zip,B,hwSheetName(d),sh.pre+'<sheetData>'+xmlRows.join('')+'</sheetData>'+sh.post);
+    var sum=function(g){return Object.keys(cenCol).reduce(function(a,c){return a+R.plan.p[g][c].length;},0);};
+    return ['새 시트 '+nm+' (본보기 '+T.name+') · 신청 영어 '+sum('영어')+' / 제2외국어 '+sum('제2외국어')+' / 톡이즈 '+sum('톡이즈')+(sp?'':' · 특이사항 칸 없음')];
+}
+
+async function hwPrepUpload(input){
+    var files=Array.prototype.slice.call(input.files||[]);input.value='';if(!files.length)return;
+    var d=wsHsDays().find(function(x){return x.ds===_wsHsDs;});if(!d){alert('근무 통계에서 날짜를 먼저 고르세요');return;}
+    try{if(!window.JSZip)await wsLoadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');}catch(e){alert('엑셀 처리 도구를 불러오지 못했습니다');return;}
+    var msgs=[];
+    for(var f of files){
+        try{
+            var zip=await JSZip.loadAsync(await f.arrayBuffer()),B=await hwBook(zip),names=B.sheets.map(function(s){return s.name;}),log;
+            if(names.indexOf('개인별')>=0&&names.indexOf('db수')>=0)log=await hwPerf(zip,B,d);
+            else if(names.indexOf('근태보고')>=0)log=await hwAtt(zip,B,d);
+            else if(B.sheets.some(function(s){return /^\d{4,6}$/.test(s.name);}))log=await hwIndiv(zip,B,d);
+            else{msgs.push('✗ '+f.name+' : 어떤 파일인지 알 수 없습니다');continue;}
+            await hwFinish(zip,B);
+            var blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+            var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=f.name;document.body.appendChild(a);a.click();
+            setTimeout(function(u,el){return function(){URL.revokeObjectURL(u);el.remove&&el.remove();};}(a.href,a),2000);
+            msgs.push('✓ '+f.name+'\n   '+log.join('\n   '));
+            await new Promise(function(res){setTimeout(res,400);}); // 연속 다운로드 간격
+        }catch(e){console.error(e);msgs.push('✗ '+f.name+' : '+e.message);}
+    }
+    alert(d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+') 기준으로 만들었습니다\n\n'+msgs.join('\n\n'));
 }
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
