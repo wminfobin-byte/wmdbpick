@@ -2816,8 +2816,10 @@ function ysLearnFromSheet(ws){
     }
     return found?acc:null;
 }
-async function ysLearnUpload(input){
-    var files=Array.prototype.slice.call(input.files||[]);input.value='';if(!files.length)return;
+async function ysLearnUpload(input){ // input = 파일 선택 칸 또는 끌어놓은 파일 배열
+    var dropped=Array.isArray(input),files=dropped?input:Array.prototype.slice.call(input.files||[]);if(!dropped)input.value='';
+    files=files.filter(function(f){return /\.xlsx?$/i.test(f.name);});
+    if(!files.length){if(dropped)alert('엑셀 파일만 올릴 수 있습니다');return;}
     var acc={},used=[],skipped=[];
     for(var f of files){
         try{
@@ -2843,7 +2845,7 @@ function ysRenderLearnBox(){
     h+='<div class="table-wrap"><table style="font-size:0.8rem;"><thead><tr><th>평일</th>'+TIERS.map(function(t){return'<th class="num">'+t+'</th>';}).join('')+'</tr></thead><tbody>';
     YS_GRADES.forEach(function(g){h+='<tr><td>'+g+'등급</td>'+sh[g].map(function(v,s){return'<td class="num" style="'+(YS_ELIG.wk[g].indexOf(s)<0?'color:#ccc;':'')+'">'+(YS_ELIG.wk[g].indexOf(s)<0?'-':v.toFixed(1)+'%')+'</td>';}).join('')+'</tr>';});
     h+='</tbody></table></div>';
-    h+='<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><label class="btn btn-primary" style="font-size:0.78rem;padding:5px 12px;cursor:pointer;">예상 파일 올려 학습<input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="ysLearnUpload(this)"></label>';
+    h+='<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><label class="btn btn-primary hw-drop" data-drop="ys" style="font-size:0.78rem;padding:5px 12px;cursor:pointer;border:2px dashed rgba(255,255,255,0.7);" title="클릭해서 고르거나 예상 파일을 여기에 끌어다 놓으세요">예상 파일 올려 학습 (클릭 또는 끌어놓기)<input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="ysLearnUpload(this)"></label>';
     if(L)h+='<button class="btn" style="font-size:0.78rem;padding:5px 12px;background:#eee;color:#333;" onclick="ysLearnReset()">기본값으로</button>';
     h+='<span style="font-size:0.75rem;color:#888;align-self:center;">수기로 고친 \'N월 N주 계산 - 예상.xlsx\' 파일을 여러 개 한꺼번에 올리면 평일 비중을 다시 계산합니다</span></div>';
     el.innerHTML=h;
@@ -5127,13 +5129,13 @@ async function hwPrepUpload(input){ // input = 파일 선택 칸 또는 끌어�
     }
     alert(d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+') 기준으로 만들었습니다\n\n'+msgs.join('\n\n'));
 }
-// 휴일 파일 준비 버튼에 파일 끌어놓기 (화면이 다시 그려져도 동작하도록 문서에서 위임)
+// .hw-drop 버튼에 파일 끌어놓기 (휴일 파일 준비 / data-drop="ys" 예상 파일 학습) — 화면이 다시 그려져도 동작하도록 문서에서 위임
 (function(){
     var zone=function(e){return e.target&&e.target.closest?e.target.closest('.hw-drop'):null;};
     var hasFiles=function(e){return e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>=0;};
     document.addEventListener('dragover',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';z.classList.add('hw-over');});
     document.addEventListener('dragleave',function(e){var z=zone(e);if(z&&!z.contains(e.relatedTarget))z.classList.remove('hw-over');});
-    document.addEventListener('drop',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();z.classList.remove('hw-over');hwPrepUpload(Array.prototype.slice.call(e.dataTransfer.files||[]));});
+    document.addEventListener('drop',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();z.classList.remove('hw-over');var fs=Array.prototype.slice.call(e.dataTransfer.files||[]);if(z.dataset.drop==='ys')ysLearnUpload(fs);else hwPrepUpload(fs);});
 })();
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
