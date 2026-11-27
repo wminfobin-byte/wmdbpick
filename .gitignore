@@ -9,3 +9,6 @@ node_modules/
 *.xls
 ~$*
 !yesang_template.xlsx
+
+# 네이버 부킹 광고비 규칙 원본 (사내 정보, 로컬 보관)
+네이버_부킹_광고비_규칙.md
