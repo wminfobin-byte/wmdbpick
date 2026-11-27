@@ -4902,7 +4902,7 @@ function wsHsHTML(){
     h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><input type="date" value="'+_wsHsDs+'" min="'+days[0].ds+'" max="'+days[days.length-1].ds+'" onchange="if(this.value)wsHsPick(this.value);" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;">';
     h+='<span style="font-size:0.85rem;color:var(--gray-600);">'+lab(d)+'</span>';
     h+='<button class="btn btn-primary" style="font-size:0.76rem;padding:4px 10px;" onclick="wsHsDownloadWorkers()">출근자 리스트 다운로드</button>';
-    h+='<label class="btn hw-drop" style="font-size:0.76rem;padding:4px 10px;background:#f97316;color:#fff;cursor:pointer;border:2px dashed rgba(255,255,255,0.7);" title="시간대별 성과 · 휴무 개인별 성과 · 휴일근무 근태보고 파일을 한꺼번에 선택하거나 여기에 끌어다 놓으면 이 날짜 기준으로 채워서 같은 이름으로 다시 받습니다">휴일 파일 준비 (3종 클릭 또는 끌어놓기)<input type="file" accept=".xlsx" multiple style="display:none;" onchange="hwPrepUpload(this)"></label>';
+    h+='<label class="btn hw-drop" style="font-size:0.76rem;padding:4px 10px;background:#f97316;color:#fff;cursor:pointer;border:2px dashed rgba(255,255,255,0.7);" title="시간대별 성과 · 휴무 개인별 성과 · 휴일근무 근태보고 · 성과보고 양식(.txt) 파일을 한꺼번에 선택하거나 여기에 끌어다 놓으면 이 날짜 기준으로 채워서 같은 이름으로 다시 받습니다">휴일 파일 준비 (4종 클릭 또는 끌어놓기)<input type="file" accept=".xlsx,.txt" multiple style="display:none;" onchange="hwPrepUpload(this)"></label>';
     if(d.wkDay){
         [['work','출근 인원'+(d.wkHol?' (평일공휴일출근)':'')],['off','휴무 인원'+(d.wkHol?' (평일공휴일휴무)':'')]].forEach(function(m){h+='<button class="btn" style="font-size:0.76rem;padding:4px 10px;'+(mode===m[0]?'background:var(--navy);color:#fff;':'background:#eee;color:#333;')+'" onclick="_wsHsMode=\''+m[0]+'\';var y=window.scrollY;wsRender();window.scrollTo(0,y);">'+m[1]+'</button>';});
     }
@@ -5027,6 +5027,28 @@ async function hwBook(zip){
     var sf=zip.file('xl/sharedStrings.xml');
     return {wb:wb,rels:rels,sheets:sheets,sst:hwSST(sf?await sf.async('string'):'')};
 }
+// 저장 전 화면: 모든 시트 스크롤 맨 위·커서 A1, B.active 시트만 선택(열면 그 시트). 틀 고정은 유지(분할 지점부터 보이게)
+async function hwSetViews(zip,B){
+    var act=B.sheets.findIndex(function(s){return s.name===B.active;});
+    for(var i=0;i<B.sheets.length;i++){
+        var f=zip.file(B.sheets[i].path);if(!f)continue;var x=await f.async('string'),hasPane=false;
+        x=x.replace(/<pane\b([^>]*?)\/>/g,function(m,at){
+            hasPane=true;var xs=+((at.match(/\bxSplit="([\d.]+)"/)||[])[1]||0),ys=+((at.match(/\bySplit="([\d.]+)"/)||[])[1]||0);
+            at=at.replace(/\s*activePane="[^"]*"/,'')+' activePane="topLeft"';
+            if(/state="frozen/.test(at))at=at.replace(/\s*topLeftCell="[^"]*"/,'')+' topLeftCell="'+hwColL(Math.round(xs)+1)+(Math.round(ys)+1)+'"';
+            return'<pane'+at+'/>';
+        });
+        // XML 순서: <sheetView> 안에 pane → selection
+        var sel='<selection'+(hasPane?' pane="topLeft"':'')+' activeCell="A1" sqref="A1"/>';
+        x=x.replace(/<selection\b[^>]*?\/>/g,'').replace(/<sheetView\b([^>]*?)(\/>|>)/g,function(m,at,end){
+            at=at.replace(/\s*(tabSelected|topLeftCell)="[^"]*"/g,'');if(i===act)at=' tabSelected="1"'+at;
+            return'<sheetView'+at+'>'+(hasPane?'':sel)+(end==='/>'?'</sheetView>':'');
+        });
+        if(hasPane)x=x.replace(/(<pane\b[^>]*\/>)/,'$1'+sel);
+        zip.file(B.sheets[i].path,x);
+    }
+    if(act>=0)B.wb=B.wb.replace(/(<workbookView[^>]*?)\s*(activeTab|firstSheet)="\d+"/g,'$1').replace(/(<workbookView[^>]*?)\s*(activeTab|firstSheet)="\d+"/g,'$1').replace(/<workbookView/,'<workbookView activeTab="'+act+'"');
+}
 // 계산 체인 삭제(셀 위치가 바뀌어도 오류 없도록) + 열 때 전체 재계산
 async function hwFinish(zip,B){
     var wb=B.wb.replace(/<calcPr([^>]*?)\s*fullCalcOnLoad="[^"]*"/,'<calcPr$1');
@@ -5093,12 +5115,17 @@ async function hwPerf(zip,B,d){
         zip.file(sh.path,P.pre.replace(/<dimension ref="[^"]*"\/>/,'<dimension ref="A1:'+hwColL(Math.max(1,lastC))+'2"/>')+'<sheetData>'+body+'</sheetData>'+P.post);
         log.push(nm+' '+cnt+'행 삭제');
     }
-    // 센터별·그룹별 B2 = 날짜
+    // 센터별·그룹별: 블록마다 머리 B열(B2·B14·… )에 있는 날짜 칸 전부 = 이 날짜 (숫자 serial, 수식·문자 칸은 제외)
     for(var nm2 of ['센터별','그룹별']){
-        var s2=S(nm2);if(!s2)continue;var x2=await zip.file(s2.path).async('string');
-        var c2=x2.match(/<c r="B2"[^>]*?(\/>|>[\s\S]*?<\/c>)/);
-        if(c2){var st=(c2[0].match(/\bs="(\d+)"/)||[])[1];x2=x2.replace(c2[0],hwCell('B2',st,'n',ysSerial(d.ds)));zip.file(s2.path,x2);log.push(nm2+' 날짜');}
+        var s2=S(nm2);if(!s2)continue;var x2=await zip.file(s2.path).async('string'),nd=0,refs=[];
+        x2=x2.replace(/<c r="(B\d+)"([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g,function(m,ref,at,_e,inner){
+            inner=inner||'';if(/\bt="(s|str|inlineStr|b|e)"/.test(at)||/<f[\s>\/]/.test(inner))return m;
+            var v=(inner.match(/<v>([^<]*)<\/v>/)||[])[1];if(!v||!/^\d{5}(\.0+)?$/.test(v))return m;
+            nd++;refs.push(ref);return hwCell(ref,(at.match(/\bs="(\d+)"/)||[])[1],'n',ysSerial(d.ds));
+        });
+        if(nd){zip.file(s2.path,x2);log.push(nm2+' 날짜 '+nd+'곳 ('+refs.join(',')+')');}else log.push(nm2+' 날짜 칸 없음');
     }
+    B.active='db수';
     // 그룹: 근태파일 전체 명단 (C=이름, D=담당 DB)
     var sg=S('그룹');
     if(sg&&!hwPeopleOfMonth(d).length)log.push('그룹: 그 달 근태파일이 없어 건드리지 않음');
@@ -5211,7 +5238,7 @@ async function hwIndiv(zip,B,d){
     post=post.replace(/<conditionalFormatting sqref="D[^"]*">[\s\S]*?<\/conditionalFormatting>/g,'');
     // 엑셀 XML 순서: mergeCells → phoneticPr → conditionalFormatting → dataValidations → hyperlinks → printOptions → pageMargins
     if(dx&&tr>5)post=post.replace(/<dataValidations|<hyperlinks|<printOptions|<pageMargins|<pageSetup|<\/worksheet>/,function(m){return'<conditionalFormatting sqref="D5:D'+(tr-1)+'"><cfRule type="duplicateValues" dxfId="'+dx+'" priority="1"/></conditionalFormatting>'+m;});
-    var nm=await hwAddSheet(zip,B,hwSheetName(d),sh.pre+'<sheetData>'+xmlRows.join('')+'</sheetData>'+post);
+    var nm=await hwAddSheet(zip,B,hwSheetName(d),sh.pre+'<sheetData>'+xmlRows.join('')+'</sheetData>'+post);B.active=nm;
     return ['새 시트 '+nm+' (본보기 '+T.name+') · '+blocks.map(function(b){return b.c+' '+b.list.length;}).join(', ')+' · 총계 '+tr+'행'];
 }
 
@@ -5255,29 +5282,55 @@ async function hwAtt(zip,B,d){
     });
     var dim=(P.pre.match(/<dimension ref="([^"]*)"\/>/)||[])[1]||'A1';
     var sh=hwSheetShell(P.pre,P.post,dim);
-    var nm=await hwAddSheet(zip,B,hwSheetName(d),sh.pre+'<sheetData>'+xmlRows.join('')+'</sheetData>'+sh.post);
+    var nm=await hwAddSheet(zip,B,hwSheetName(d),sh.pre+'<sheetData>'+xmlRows.join('')+'</sheetData>'+sh.post);B.active=nm;
     var sum=function(g){return Object.keys(cenCol).reduce(function(a,c){return a+R.plan.p[g][c].length;},0);};
     return ['새 시트 '+nm+' (본보기 '+T.name+') · 신청 영어 '+sum('영어')+' / 제2외국어 '+sum('제2외국어')+' / 톡이즈 '+sum('톡이즈')+(sp?'':' · 특이사항 칸 없음')];
 }
 
+function hwSave(blob,name){
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+    setTimeout(function(u,el){return function(){URL.revokeObjectURL(u);el.remove&&el.remove();};}(a.href,a),2000);
+}
+// 성과보고 양식(.txt): 'M/D(요일)'을 고른 날짜로. 원본 인코딩(UTF-8 또는 CP949)·줄바꿈 그대로 — 바이트 단위로 숫자와 요일 글자만 교체
+var HW_DOW_CP949=['c0cf','bff9','c8ad','bcf6','b8f1','b1dd','c5e4']; // 일월화수목금토
+function hwTxtDates(u8,d){
+    var nd=d.mon+'/'+d.dom,n=0,utf8=true;
+    try{new TextDecoder('utf-8',{fatal:true}).decode(u8);}catch(e){utf8=false;}
+    if(utf8){
+        var s=new TextDecoder('utf-8').decode(u8).replace(/\d{1,2}\/\d{1,2}\(([일월화수목금토])\)/g,function(){n++;return nd+'('+WS_DOW[d.dow]+')';});
+        return{bytes:new TextEncoder().encode(s),n:n};
+    }
+    var bin='';for(var i=0;i<u8.length;i++)bin+=String.fromCharCode(u8[i]);
+    var dowSet={};HW_DOW_CP949.forEach(function(h){dowSet[String.fromCharCode(parseInt(h.slice(0,2),16),parseInt(h.slice(2),16))]=1;});
+    var h=HW_DOW_CP949[d.dow],nw=String.fromCharCode(parseInt(h.slice(0,2),16),parseInt(h.slice(2),16));
+    bin=bin.replace(/\d{1,2}\/\d{1,2}\(([\x80-\xff]{2})\)/g,function(m,w){if(!dowSet[w])return m;n++;return nd+'('+nw+')';});
+    var out=new Uint8Array(bin.length);for(var j=0;j<bin.length;j++)out[j]=bin.charCodeAt(j);
+    return{bytes:out,n:n};
+}
 async function hwPrepUpload(input){ // input = 파일 선택 칸 또는 끌어놓은 파일 배열
     var dropped=Array.isArray(input),files=dropped?input:Array.prototype.slice.call(input.files||[]);if(!dropped)input.value='';
-    files=files.filter(function(f){return /\.xlsx$/i.test(f.name);});
-    if(!files.length){if(dropped)alert('엑셀(.xlsx) 파일만 올릴 수 있습니다');return;}
+    files=files.filter(function(f){return /\.(xlsx|txt)$/i.test(f.name);});
+    if(!files.length){if(dropped)alert('엑셀(.xlsx) 또는 성과보고 양식(.txt) 파일만 올릴 수 있습니다');return;}
     var d=wsHsDays().find(function(x){return x.ds===_wsHsDs;});if(!d){alert('근무 통계에서 날짜를 먼저 고르세요');return;}
-    try{if(!window.JSZip)await wsLoadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');}catch(e){alert('엑셀 처리 도구를 불러오지 못했습니다');return;}
+    if(files.some(function(f){return /\.xlsx$/i.test(f.name);})){try{if(!window.JSZip)await wsLoadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');}catch(e){alert('엑셀 처리 도구를 불러오지 못했습니다');return;}}
     var msgs=[];
     for(var f of files){
         try{
+            if(/\.txt$/i.test(f.name)){
+                var tr=hwTxtDates(new Uint8Array(await f.arrayBuffer()),d);
+                hwSave(new Blob([tr.bytes],{type:'text/plain'}),f.name);
+                msgs.push('✓ '+f.name+'\n   날짜 '+tr.n+'곳 → '+d.mon+'/'+d.dom+'('+WS_DOW[d.dow]+')'+(tr.n?'':' (바꿀 날짜를 못 찾음)'));
+                await new Promise(function(res){setTimeout(res,400);});
+                continue;
+            }
             var zip=await JSZip.loadAsync(await f.arrayBuffer()),B=await hwBook(zip),names=B.sheets.map(function(s){return s.name;}),log;
             if(names.indexOf('개인별')>=0&&names.indexOf('db수')>=0)log=await hwPerf(zip,B,d);
             else if(names.indexOf('근태보고')>=0)log=await hwAtt(zip,B,d);
             else if(B.sheets.some(function(s){return /^\d{4,6}$/.test(s.name);}))log=await hwIndiv(zip,B,d);
             else{msgs.push('✗ '+f.name+' : 어떤 파일인지 알 수 없습니다');continue;}
-            await hwFinish(zip,B);
+            await hwSetViews(zip,B);await hwFinish(zip,B);
             var blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-            var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=f.name;document.body.appendChild(a);a.click();
-            setTimeout(function(u,el){return function(){URL.revokeObjectURL(u);el.remove&&el.remove();};}(a.href,a),2000);
+            hwSave(blob,f.name);
             msgs.push('✓ '+f.name+'\n   '+log.join('\n   '));
             await new Promise(function(res){setTimeout(res,400);}); // 연속 다운로드 간격
         }catch(e){console.error(e);msgs.push('✗ '+f.name+' : '+e.message);}
