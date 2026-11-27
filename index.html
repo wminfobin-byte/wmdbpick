@@ -407,6 +407,11 @@
             <div class="section" id="sched-section">
                 <h3 style="display:flex;align-items:center;gap:10px;">타임보드 / 스페셜 스케줄 <button id="toggleOldBtn" onclick="toggleOldSchedules()" style="display:none;padding:4px 12px;background:#9e9e9e;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;">지난 스케줄 보기</button> <button onclick="clearAllSchedules()" style="padding:4px 12px;background:#e53935;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;">전체삭제</button></h3>
                 <p style="color:#666;font-size:0.85rem;margin-bottom:12px;">5PM 이후 타임보드/스페셜은 자동으로 다음날 분배에 포함</p>
+                <div style="margin-bottom:12px;">
+                    <label class="hw-drop" data-drop="bk" style="display:inline-block;padding:6px 14px;background:#2e7d32;color:#fff;border:2px dashed rgba(255,255,255,0.7);border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;" title="네이버_부킹_현황_*.xlsx — 월별 부킹현황(타임보드)·스페셜DA(스페셜) 시트에서 차주 슬롯과 광고비를 읽습니다">네이버 부킹 파일 올리기 (클릭 또는 끌어놓기)<input type="file" accept=".xlsx" style="display:none;" onchange="bkUpload(this)"></label>
+                    <span style="font-size:0.72rem;color:#888;margin-left:6px;">광고비 = 정가×0.7 · 미판 칸 금액 · 무상 평일정가×0.5 → 대행비 제외(TB×0.8 / SP×0.85), 만원</span>
+                </div>
+                <div id="bkPreview"></div>
                 <div class="schedule-form">
                     <select id="schedType"><option value="timeboard">타임보드</option><option value="special">스페셜</option></select>
                     <input type="date" id="schedDate" style="padding:6px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;">
@@ -1768,14 +1773,19 @@ function calcSchedule(){
     var type=document.getElementById('schedType').value;
     var schedDate=document.getElementById('schedDate').value;
     if(!schedDate){alert('날짜를 선택해주세요.');return null;}
-    var dateObj=new Date(schedDate+'T00:00:00');
-    var day=dateObj.getDay();
     var hour=document.getElementById('schedHour').value!==''?parseInt(document.getElementById('schedHour').value):null;
     var pcts={},pt=0;DB_TYPES.forEach(function(dt){var v=parseInt(document.getElementById('pct_'+dt).value)||0;pcts[dt]=v;pt+=v;});
     if(pt!==100){alert('비중 합계가 100%여야 합니다 (현재: '+pt+'%)');return null;}
+    var manualDB=parseInt(document.getElementById('manualDB').value);
+    var adCost=parseInt(document.getElementById('adCost').value)||0;
+    return makeSchedule({type:type,schedDate:schedDate,hour:hour,pcts:pcts,manualDB:manualDB,adCost:adCost});
+}
+// 스케줄 한 건 계산 (입력폼·부킹 파일 등록 공용). p={type,schedDate,hour,pcts,manualDB,adCost}
+function makeSchedule(p){
+    var type=p.type,schedDate=p.schedDate,hour=p.hour,pcts=p.pcts,manualDB=p.manualDB;
+    var day=new Date(schedDate+'T00:00:00').getDay();
     var weekend=isWeekendOrHoliday(schedDate);
     var dayTypeLabel=weekend?'주말':'평일';
-    var manualDB=parseInt(document.getElementById('manualDB').value);
     var isManual=manualDB>0;
     var bd={},tp=0;
     if(isManual){
@@ -1807,8 +1817,7 @@ function calcSchedule(){
             tp+=bd[dt];
         });
     }
-    var adCost=parseInt(document.getElementById('adCost').value)||0;
-    return{type:type,day:day,hour:hour,schedDate:schedDate,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel,adCost:adCost,manualDB:isManual?manualDB:0};
+    return{type:type,day:day,hour:hour,schedDate:schedDate,pcts:pcts,totalPredicted:tp,breakdown:bd,dayType:dayTypeLabel,adCost:p.adCost||0,manualDB:isManual?manualDB:0};
 }
 function addSchedule(){
     var data=calcSchedule();if(!data)return;
@@ -1960,7 +1969,7 @@ function updateScheduleUI(){
         var inPredWeek=s.schedDate&&wd.indexOf(getScheduleDistDate(s))>=0;
         var activeBadge=isActive?'':'<span style="display:inline-block;background:#eee;color:#999;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">지난</span>';
         var predBadge=(isActive&&inPredWeek)?' <span style="display:inline-block;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:2px;">차주</span>':'';
-        var ps=pp.join(' / '),pr=fn(s.totalPredicted)+'건'+(dp.length>1?' ('+dp.join(' / ')+')':'');
+        var ps=pp.join(' / ')+(s.needPct?' <span title="부킹 파일로 등록됨 — [수정]에서 비중을 넣으면 사라집니다" style="display:inline-block;background:#ffebee;color:#c62828;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;margin-left:4px;">비중 확인</span>':''),pr=fn(s.totalPredicted)+'건'+(dp.length>1?' ('+dp.join(' / ')+')':'');
         var distDate=getScheduleDistDate(s);
         var distLabel='';
         if(distDate){var dd=new Date(distDate+'T00:00:00');distLabel=(dd.getMonth()+1)+'/'+dd.getDate()+'('+DAY_NAMES[dd.getDay()]+')';if(distDate!==s.schedDate)distLabel+=' <span style="color:#d84315;font-size:0.72rem;">(다음날)</span>';}
@@ -1969,6 +1978,152 @@ function updateScheduleUI(){
             +'<td class="num">'+pr+manualTag+'</td><td class="num">'+(s.adCost?s.adCost.toLocaleString()+'만':'-')+'</td><td>'+distLabel+'</td>'
             +'<td><span style="color:#1a237e;cursor:pointer;margin-right:8px;" onclick="editSchedule('+s.id+')">수정</span><span style="color:#e53935;cursor:pointer;" onclick="removeSchedule('+s.id+')">삭제</span></td></tr>';
     }).join('');
+}
+
+// ======================== 네이버 부킹 파일 → 스케줄 (bk*) ========================
+// 규칙: 네이버_부킹_광고비_규칙.md (구분 판정·광고비). 단가 계산(7장)·수기 부킹·병합은 쓰지 않음
+// 월별 부킹현황 = 타임보드: 제목 AI열 'N월', 다음 행 AI~(34~64) 날짜, 그 아래 0~23시. 미판 박스 테두리는 JSZip으로 styles.xml 직접 읽음
+// 스페셜DA = 스페셜: A열 '날짜/시간' 행의 D~AH(3~33) 날짜, 그 아래 0~23시. 미판은 메모로만 판정(박스 규칙 없음)
+// 광고비(만원) = round(구분별 광고비 × 대행비 계수 / 10000). 정가 ×0.7 · 미판 칸 금액 · 무상 평일정가 ×0.5 · 특수 직접 입력
+var BK_LIST_RATE=0.7,BK_FREE_RATE=0.5,BK_AGENCY={tb:0.8,sp:0.85};
+var _bkPreview=null;
+function bkDs(v){if(typeof v!=='number')return null;var p=XLSX.SSF.parse_date_code(v);if(!p||p.y<=2000)return null;return p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');}
+function bkNum(c){return c&&typeof c.v==='number'?c.v:0;}
+// 시트 → {행:{열:cell}} (!ref가 100만 행으로 잡혀 있어 범위 순회 대신 실제 셀만)
+function bkRows(ws){var R={};Object.keys(ws).forEach(function(k){if(k.charAt(0)==='!')return;var a=XLSX.utils.decode_cell(k);(R[a.r]||(R[a.r]={}))[a.c]=ws[k];});return R;}
+// 셀 주소 → 테두리 {left,top,right,bottom} (style 문자열)
+async function bkReadBorders(buf,sheetName){
+    if(!window.JSZip)await wsLoadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+    var zip=await JSZip.loadAsync(buf);
+    var wbx=await zip.file('xl/workbook.xml').async('string'),rels=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    var sh=(wbx.match(/<sheet\s[^>]*>/g)||[]).find(function(t){return t.indexOf('name="'+sheetName+'"')>=0;});if(!sh)return null;
+    var rid=sh.match(/r:id="([^"]+)"/)[1];
+    var rel=(rels.match(/<Relationship\s[^>]*>/g)||[]).find(function(t){return t.indexOf('Id="'+rid+'"')>=0;});if(!rel)return null;
+    var target=rel.match(/Target="([^"]+)"/)[1].replace(/^\/?(xl\/)?/,'');
+    var xml=await zip.file('xl/'+target).async('string');
+    var sheetStyle={},re=/<c\s([^>]*?)\/?>/g,m;
+    while((m=re.exec(xml))){var r=m[1].match(/\br="([A-Z]+\d+)"/),s=m[1].match(/\bs="(\d+)"/);if(r&&s)sheetStyle[r[1]]=+s[1];}
+    var sx=await zip.file('xl/styles.xml').async('string');
+    var borders=[],bm=sx.match(/<borders\b[^>]*>([\s\S]*?)<\/borders>/);
+    if(bm){var rb=/<border\b([^>]*?)(\/>|>([\s\S]*?)<\/border>)/g;while((m=rb.exec(bm[1]))){var inner=m[3]||'',o={};['left','top','right','bottom'].forEach(function(k){var mm=inner.match(new RegExp('<'+k+'\\b([^>]*)'));var st=mm&&mm[1].match(/style="([^"]+)"/);o[k]=st?st[1]:'';});borders.push(o);}}
+    var xfs=[],xm=sx.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/);
+    if(xm){var rx=/<xf\b([^>]*)/g;while((m=rx.exec(xm[1]))){var b=m[1].match(/borderId="(\d+)"/);xfs.push(borders[b?+b[1]:0]||{});}}
+    return function(ref){return xfs[sheetStyle[ref]||0]||{};};
+}
+function bkIsBox(b){var t=/^(medium|thick)$/;return !!b&&t.test(b.left||'')&&t.test(b.top||'')&&t.test(b.right||'');}
+// 칸 하나 → 슬롯 (구분·정가·광고비·확인필요)
+function bkClassify(kind,ds,h,cell,wk,we,box){
+    var v=cell.v,note=cell.c?cell.c.map(function(x){return x.t||'';}).join('\n').replace(/\s+/g,' ').trim():'';
+    var hol=isWeekendOrHoliday(ds),dayLp=hol?we:wk;
+    var s={kind:kind,date:ds,hour:h,cellAmount:v,note:note,cls:'',listPrice:dayLp,discountPct:null,cost:null,check:false,why:''},pm;
+    if(v<100){s.cls='무상';s.listPrice=wk;if(wk)s.cost=wk*BK_FREE_RATE;else{s.check=true;s.why='평일 정가 없음';}}
+    else if((pm=note.match(/미판\s*(\d+)\s*%/))){s.cls='미판';s.discountPct=+pm[1];s.cost=v;
+        if(v===wk||v===we){s.check=true;s.why='미판인데 정가 금액';}
+        else if(dayLp&&Math.abs(v-dayLp*(1-s.discountPct/100))>1){s.check=true;s.why='메모 '+s.discountPct+'%와 금액 불일치 (정가 '+fn(dayLp)+')';}}
+    else if(/프로모션|보상/.test(note)){s.cls='특수';s.check=true;s.why='특수 — 금액 직접 입력';}
+    else if(box){s.cls='미판';s.cost=v;if(v===wk||v===we){s.check=true;s.why='박스(미판)인데 정가 금액';}}
+    else{s.cls='정가';
+        if(v===wk)s.listPrice=wk;else if(v===we)s.listPrice=we;
+        else{s.check=true;s.why='정가표('+fn(dayLp)+')와 다른 금액 — 정가표 기준';}
+        s.cost=s.listPrice?s.listPrice*BK_LIST_RATE:null;if(!s.listPrice){s.check=true;s.why='정가표 없음';}}
+    return s;
+}
+function bkAdCost(s){var c=s.cls==='특수'?(s.manualMan>0?s.manualMan*10000:null):s.cost;return c==null?null:Math.round(c*BK_AGENCY[s.kind]/10000);}
+// 시트 하나에서 차주 슬롯 추출. inWin(ds,h) = 차주 분배 대상인지
+function bkParseSheet(ws,kind,inWin,borderOf,warns){
+    var R=bkRows(ws),out=[];
+    var c0=kind==='tb'?34:3,c1=kind==='tb'?64:33;
+    Object.keys(R).map(Number).sort(function(a,b){return a-b;}).forEach(function(r){
+        var row=R[r],hdr;
+        if(kind==='tb'){var t=row[34];if(!t||typeof t.v!=='string'||!/^\s*\d{1,2}월/.test(t.v))return;hdr=r+1;}
+        else{var a=row[0];if(!a||a.v!=='날짜/시간')return;hdr=r;}
+        var H=R[hdr]||{},dates={},any=false;
+        for(var c=c0;c<=c1;c++){var ds=H[c]?bkDs(H[c].v):null;if(ds){dates[c]=ds;any=true;}}
+        if(!any)return;
+        for(var h=0;h<24;h++){
+            var hr=R[hdr+1+h]||{},wk=bkNum(hr[1]),we=hr[2]?bkNum(hr[2]):wk;
+            Object.keys(dates).forEach(function(cs){
+                var c=+cs,ds=dates[c];if(!inWin(ds,h))return;
+                var cell=hr[c];if(!cell)return;
+                if(typeof cell.v==='string'){if(cell.v.trim())warns.push(ds+' '+h+'시 '+(kind==='tb'?'TB':'SP')+' 텍스트 칸 건너뜀: '+cell.v.trim());return;}
+                if(typeof cell.v!=='number'||!cell.v)return;
+                var box=kind==='tb'&&borderOf?bkIsBox(borderOf(XLSX.utils.encode_cell({r:hdr+1+h,c:c}))):false;
+                out.push(bkClassify(kind,ds,h,cell,wk,we,box));
+            });
+        }
+    });
+    return out;
+}
+async function bkUpload(src){
+    var files=src&&src.files?Array.prototype.slice.call(src.files):(src||[]);if(src&&src.files)src.value='';
+    var f=files[0];if(!f)return;
+    var box=document.getElementById('bkPreview');
+    box.innerHTML='<div style="padding:10px;color:#555;font-size:0.85rem;">'+wsEsc(f.name)+' 읽는 중… (파일이 커서 몇 초 걸립니다)</div>';
+    await new Promise(function(r){setTimeout(r,30);});
+    try{
+        var buf=await f.arrayBuffer();
+        var wb=XLSX.read(buf,{type:'array',sheets:['월별 부킹현황','스페셜DA'],cellFormula:false,cellHTML:false,cellText:false,cellStyles:false});
+        var warns=[],wd=getNextWeekDates();
+        var inWin=function(ds,h){var dd=ds;if(h>=DIST_CUTOFF_HOUR){var d=new Date(ds+'T00:00:00');d.setDate(d.getDate()+1);dd=formatDate(d);}return wd.indexOf(ds)>=0||wd.indexOf(dd)>=0;};
+        var slots=[];
+        if(wb.Sheets['월별 부킹현황']){
+            var borderOf=null;try{borderOf=await bkReadBorders(buf,'월별 부킹현황');}catch(e){warns.push('테두리(미판 박스)를 읽지 못함 — 메모 없는 미판은 정가로 잡힐 수 있음');}
+            slots=slots.concat(bkParseSheet(wb.Sheets['월별 부킹현황'],'tb',inWin,borderOf,warns));
+        }else warns.push('"월별 부킹현황" 시트를 찾을 수 없음');
+        if(wb.Sheets['스페셜DA'])slots=slots.concat(bkParseSheet(wb.Sheets['스페셜DA'],'sp',inWin,null,warns));
+        else warns.push('"스페셜DA" 시트를 찾을 수 없음');
+        slots.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.hour-b.hour||(a.kind<b.kind?1:-1);});
+        slots.forEach(function(s){s.sel=!s.check;});
+        _bkPreview={file:f.name,slots:slots,warns:warns,week:wd};
+        bkRender();
+    }catch(e){console.error(e);box.innerHTML='<div style="padding:10px;color:#c62828;font-size:0.85rem;">부킹 파일을 읽지 못했습니다: '+wsEsc(e.message||String(e))+'</div>';}
+}
+function bkTypeOf(k){return k==='tb'?'timeboard':'special';}
+function bkExisting(s){return schedules.find(function(x){return x.type===bkTypeOf(s.kind)&&x.schedDate===s.date&&x.hour===s.hour;});}
+function bkRender(){
+    var box=document.getElementById('bkPreview'),P=_bkPreview;if(!box)return;if(!P){box.innerHTML='';return;}
+    var w=P.week,lab=function(ds){var d=new Date(ds+'T00:00:00');return(d.getMonth()+1)+'/'+d.getDate()+'('+DAY_NAMES[d.getDay()]+')';};
+    var nTb=P.slots.filter(function(s){return s.kind==='tb';}).length,nSp=P.slots.length-nTb,nChk=P.slots.filter(function(s){return s.check;}).length;
+    var h='<div style="border:1px solid #c8e6c9;background:#f9fdf9;border-radius:8px;padding:12px;margin-bottom:14px;">';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;font-size:0.85rem;"><b>'+wsEsc(P.file)+'</b><span style="color:#555;">차주 '+lab(w[0])+' ~ '+lab(w[6])+' · 타임보드 '+nTb+' · 스페셜 '+nSp+(nChk?' · <span style="color:#c62828;font-weight:600;">확인 필요 '+nChk+'</span>':'')+'</span>'
+        +'<span style="flex:1"></span><button onclick="bkRegister()" style="padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;">선택한 슬롯 스케줄로 등록</button><button onclick="_bkPreview=null;bkRender()" style="padding:6px 12px;background:#9e9e9e;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;">닫기</button></div>';
+    if(!P.slots.length)h+='<div style="color:#777;font-size:0.82rem;padding:6px 0;">차주에 해당하는 부킹 칸이 없습니다.</div>';
+    else{
+        h+='<div class="table-wrap"><table style="font-size:0.8rem;"><thead><tr><th><input type="checkbox" onclick="bkSelAll(this.checked)"'+(P.slots.every(function(s){return s.sel;})?' checked':'')+'></th><th>유형</th><th>날짜</th><th>시간</th><th>구분</th><th class="num">칸 금액</th><th class="num">정가</th><th class="num">광고비(만원)</th><th>등록</th><th>비고</th></tr></thead><tbody>';
+        P.slots.forEach(function(s,i){
+            var ad=bkAdCost(s),ex=bkExisting(s);
+            var cls=s.cls+(s.discountPct!=null?' '+s.discountPct+'%':'');
+            var adCell=s.cls==='특수'?'<input type="number" min="0" placeholder="원금 만원" value="'+(s.manualMan||'')+'" oninput="bkManual('+i+',this.value)" style="width:80px;padding:2px 4px;border:1px solid #e57373;border-radius:4px;"> → <span id="bkAd'+i+'">'+(ad!=null?fn(ad):'-')+'</span>':(ad!=null?fn(ad):'-');
+            var reg=ex?'<span style="color:#1565c0;">광고비만 갱신'+(ex.adCost?' ('+fn(ex.adCost)+'→)':'')+'</span>':'<span style="color:#2e7d32;">신규 (영어 100%)</span>';
+            h+='<tr style="'+(s.check?'background:#ffebee;':'')+'"><td><input type="checkbox" onchange="bkSel('+i+',this.checked)"'+(s.sel?' checked':'')+'></td>'
+                +'<td><span class="badge '+(s.kind==='tb'?'badge-blue':'badge-orange')+'">'+(s.kind==='tb'?'타임보드':'스페셜')+'</span></td>'
+                +'<td>'+lab(s.date)+'</td><td>'+formatHour(s.hour)+'</td><td>'+cls+'</td>'
+                +'<td class="num">'+(s.cellAmount<100?s.cellAmount:fn(s.cellAmount))+'</td><td class="num">'+(s.listPrice?fn(s.listPrice):'-')+'</td><td class="num">'+adCell+'</td><td>'+reg+'</td>'
+                +'<td style="font-size:0.74rem;color:#666;">'+(s.why?'<span style="color:#c62828;font-weight:600;">'+wsEsc(s.why)+'</span> ':'')+wsEsc(s.note)+'</td></tr>';
+        });
+        h+='</tbody></table></div>';
+        if(nChk)h+='<div style="font-size:0.74rem;color:#c62828;margin-top:6px;">빨간 줄은 확인 필요 — 내용을 보고 체크하면 그 광고비로 등록합니다. 특수는 금액(대행비 전 원금, 만원)을 넣어야 등록됩니다.</div>';
+    }
+    if(P.warns.length)h+='<details style="margin-top:6px;font-size:0.74rem;color:#777;"><summary>경고 '+P.warns.length+'건</summary>'+P.warns.map(function(x){return'<div>'+wsEsc(x)+'</div>';}).join('')+'</details>';
+    h+='</div>';box.innerHTML=h;
+}
+function bkSel(i,v){if(_bkPreview)_bkPreview.slots[i].sel=v;}
+function bkSelAll(v){if(!_bkPreview)return;_bkPreview.slots.forEach(function(s){s.sel=v;});bkRender();}
+function bkManual(i,v){var s=_bkPreview&&_bkPreview.slots[i];if(!s)return;s.manualMan=parseFloat(v)||0;var el=document.getElementById('bkAd'+i),ad=bkAdCost(s);if(el)el.textContent=ad!=null?fn(ad):'-';}
+function bkRegister(){
+    var P=_bkPreview;if(!P)return;
+    var sel=P.slots.filter(function(s){return s.sel;});if(!sel.length){alert('등록할 슬롯을 선택해주세요.');return;}
+    var noCost=sel.filter(function(s){return bkAdCost(s)==null;});
+    if(noCost.length){alert('광고비를 알 수 없는 슬롯이 있습니다 (특수는 금액 입력 필요):\n'+noCost.map(function(s){return s.date+' '+formatHour(s.hour)+' '+s.cls;}).join('\n'));return;}
+    var add=0,upd=0,base=Date.now(),pcts={};DB_TYPES.forEach(function(dt){pcts[dt]=dt==='영어'?100:0;});
+    sel.forEach(function(s,i){
+        var ad=bkAdCost(s),ex=bkExisting(s);
+        if(ex){ex.adCost=ad;upd++;}
+        else{var d=makeSchedule({type:bkTypeOf(s.kind),schedDate:s.date,hour:s.hour,pcts:Object.assign({},pcts),manualDB:0,adCost:ad});d.id=base+i;d.needPct=true;schedules.push(d);add++;}
+    });
+    sortSchedules();saveSchedules();updateScheduleUI();refreshPredictions();
+    _bkPreview=null;bkRender();
+    alert('부킹 스케줄 등록: 신규 '+add+'건 (영어 100% — 비중 확인 필요), 광고비 갱신 '+upd+'건');
 }
 
 // ======================== UI Updates ========================
@@ -5135,7 +5290,7 @@ async function hwPrepUpload(input){ // input = 파일 선택 칸 또는 끌어�
     var hasFiles=function(e){return e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>=0;};
     document.addEventListener('dragover',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';z.classList.add('hw-over');});
     document.addEventListener('dragleave',function(e){var z=zone(e);if(z&&!z.contains(e.relatedTarget))z.classList.remove('hw-over');});
-    document.addEventListener('drop',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();z.classList.remove('hw-over');var fs=Array.prototype.slice.call(e.dataTransfer.files||[]);if(z.dataset.drop==='ys')ysLearnUpload(fs);else hwPrepUpload(fs);});
+    document.addEventListener('drop',function(e){var z=zone(e);if(!z||!hasFiles(e))return;e.preventDefault();z.classList.remove('hw-over');var fs=Array.prototype.slice.call(e.dataTransfer.files||[]);if(z.dataset.drop==='ys')ysLearnUpload(fs);else if(z.dataset.drop==='bk')bkUpload(fs);else hwPrepUpload(fs);});
 })();
 function wsRender(){
     var root=document.getElementById('wsRoot');if(!root)return;
