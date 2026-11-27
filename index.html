@@ -409,7 +409,7 @@
                 <p style="color:#666;font-size:0.85rem;margin-bottom:12px;">5PM 이후 타임보드/스페셜은 자동으로 다음날 분배에 포함</p>
                 <div style="margin-bottom:12px;">
                     <label class="hw-drop" data-drop="bk" style="display:inline-block;padding:6px 14px;background:#2e7d32;color:#fff;border:2px dashed rgba(255,255,255,0.7);border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;" title="네이버_부킹_현황_*.xlsx — 월별 부킹현황(타임보드)·스페셜DA(스페셜) 시트에서 차주 슬롯과 광고비를 읽습니다">네이버 부킹 파일 올리기 (클릭 또는 끌어놓기)<input type="file" accept=".xlsx" style="display:none;" onchange="bkUpload(this)"></label>
-                    <span style="font-size:0.72rem;color:#888;margin-left:6px;">광고비 = 정가×0.7 · 미판 칸 금액 · 무상 평일정가×0.5 → 대행비 제외(TB×0.8 / SP×0.85), 만원</span>
+                    <span style="font-size:0.72rem;color:#888;margin-left:6px;">광고비 = 정가×0.7 · 미판 칸 금액 · 무상 정가×0.5(평일/주말·공휴일 정가) → 대행비 제외(TB×0.8 / SP×0.85), 만원</span>
                 </div>
                 <div id="bkPreview"></div>
                 <div class="schedule-form">
@@ -1984,7 +1984,8 @@ function updateScheduleUI(){
 // 규칙: 네이버_부킹_광고비_규칙.md (구분 판정·광고비). 단가 계산(7장)·수기 부킹·병합은 쓰지 않음
 // 월별 부킹현황 = 타임보드: 제목 AI열 'N월', 다음 행 AI~(34~64) 날짜, 그 아래 0~23시. 미판 박스 테두리는 JSZip으로 styles.xml 직접 읽음
 // 스페셜DA = 스페셜: A열 '날짜/시간' 행의 D~AH(3~33) 날짜, 그 아래 0~23시. 미판은 메모로만 판정(박스 규칙 없음)
-// 광고비(만원) = round(구분별 광고비 × 대행비 계수 / 10000). 정가 ×0.7 · 미판 칸 금액 · 무상 평일정가 ×0.5 · 특수 직접 입력
+// 광고비(만원) = round(구분별 광고비 × 대행비 계수 / 10000). 정가 ×0.7 · 미판 칸 금액 · 무상 그날 유형 정가(평일/주말·공휴일) ×0.5 · 특수 직접 입력
+//   (md의 '무상은 주말에도 평일 정가'는 사용자 지시로 변경: 주말·공휴일 무상은 주말 정가)
 var BK_LIST_RATE=0.7,BK_FREE_RATE=0.5,BK_AGENCY={tb:0.8,sp:0.85};
 var _bkPreview=null;
 function bkDs(v){if(typeof v!=='number')return null;var p=XLSX.SSF.parse_date_code(v);if(!p||p.y<=2000)return null;return p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');}
@@ -2016,7 +2017,7 @@ function bkClassify(kind,ds,h,cell,wk,we,box){
     var v=cell.v,note=cell.c?cell.c.map(function(x){return x.t||'';}).join('\n').replace(/\s+/g,' ').trim():'';
     var hol=isWeekendOrHoliday(ds),dayLp=hol?we:wk;
     var s={kind:kind,date:ds,hour:h,cellAmount:v,note:note,cls:'',listPrice:dayLp,discountPct:null,cost:null,check:false,why:''},pm;
-    if(v<100){s.cls='무상';s.listPrice=wk;if(wk)s.cost=wk*BK_FREE_RATE;else{s.check=true;s.why='평일 정가 없음';}}
+    if(v<100){s.cls='무상';if(dayLp)s.cost=dayLp*BK_FREE_RATE;else{s.check=true;s.why=(hol?'주말':'평일')+' 정가 없음';}} // 무상 = 그날 유형 정가(평일 / 주말·공휴일) × 0.5
     else if((pm=note.match(/미판\s*(\d+)\s*%/))){s.cls='미판';s.discountPct=+pm[1];s.cost=v;
         if(v===wk||v===we){s.check=true;s.why='미판인데 정가 금액';}
         else if(dayLp&&Math.abs(v-dayLp*(1-s.discountPct/100))>1){s.check=true;s.why='메모 '+s.discountPct+'%와 금액 불일치 (정가 '+fn(dayLp)+')';}}
@@ -2920,12 +2921,17 @@ function ysAllocate(E,S,n,shares,w,secW){
         var need=cumT.map(function(t,s){return Math.max(0,t-cumD[s]);}),D=ysSum(need),den=0;
         // 휴일(토·일·공휴일 근무)은 A~D 모두 1인 총량 동일, D 70%는 평일 정상 근무일에만
         var hol=ysIsHol(i),gw=function(g){return hol?1:(GROUP_WEIGHT[g]||1);};
+        // 수량 패턴 학습이 있는 요일(평일 공휴일 제외): 등급별 1인 총량 비율·계열 출발값 = 수기 예상 파일의 그 요일 1인 수량
+        // D등급은 파일에 없으면 C의 1인 총량 × 기존 비율(평일 0.7 / 휴일 1), 출발값은 기존 비중
+        var Q=isWeekdayHoliday(i)?null:ysLearnQty(WEEK_ORDER[i]);
+        if(Q){var gw0=gw,base=function(g){if(Q[g])return ysSum(Q[g]);var c=Q.C?ysSum(Q.C):null;return c!=null?c*gw0(g):null;};
+            if(YS_GRADES.every(function(g){return !(n[g][i]>0)||base(g)>0;}))gw=base;else Q=null;}
         YS_GRADES.forEach(function(g){den+=(n[g][i]||0)*gw(g);});
         if(den<=0||D<=0)continue;
         var el=YS_ELIG[hol?'hol':'wk'],x={},tg={};
         YS_GRADES.forEach(function(g){
             tg[g]=D*gw(g)/den;
-            var pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:(hol?1:(shares[g][s]||0));});
+            var pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:(Q&&Q[g]?Q[g][s]:(hol?1:(shares[g][s]||0)));});
             if(!(ysSum(pr)>0))pr=[0,1,2,3,4,5].map(function(s){return el[g].indexOf(s)<0?0:1;});
             var ps=ysSum(pr);x[g]=pr.map(function(v){return v/ps*tg[g];});
         });
@@ -2957,46 +2963,81 @@ function ysBuildPlan(){
 function ysLearnFromSheet(ws){
     var v=function(a){var c=ws[a];return c?c.v:undefined;};
     var b3=v('B3');if(typeof b3!=='number')return null;
-    var base=Date.UTC(1899,11,30)+Math.round(b3)*86400000,cols=['M','O','Q','S','U','W','Y'],acc={},found=false;
+    var base=Date.UTC(1899,11,30)+Math.round(b3)*86400000,cols=['M','O','Q','S','U','W','Y'],acc={},qty={},found=false;
     for(var r=3;r<=45;r++){
         var m=String(v('J'+r)||'').replace(/\s/g,'').match(/^([A-D])등급$/);
         if(!m||typeof v('K'+r)!=='number'||!/0계열/.test(String(v('L'+r)||'')))continue;
         var g=m[1];acc[g]=acc[g]||[0,0,0,0,0,0];found=true;
         cols.forEach(function(c,di){
             var dt=new Date(base+di*86400000),dw=dt.getUTCDay(),ds=dt.toISOString().slice(0,10);
-            if(dw===0||dw===6||KR_HOLI_SET.has(ds))return; // 평일만 학습 (휴일은 균등 규칙)
+            if(KR_HOLI_SET.has(ds)&&dw!==0&&dw!==6)return; // 평일 공휴일은 학습 안 함 (휴일 규칙)
             var col=[0,1,2,3,4,5].map(function(s){var x=v(c+(r+s));return typeof x==='number'?x:0;});
-            if(ysSum(col)>0)col.forEach(function(x,s){acc[g][s]+=x;});
+            if(!(ysSum(col)>0))return;
+            // 수량 패턴: 등급×요일×계열 1인 수량 (토·일 포함)
+            var q=(qty[g]=qty[g]||{}),k=String(dw);q[k]=q[k]||{sum:[0,0,0,0,0,0],n:0};col.forEach(function(x,s){q[k].sum[s]+=x;});q[k].n++;
+            if(dw!==0&&dw!==6)col.forEach(function(x,s){acc[g][s]+=x;}); // 평일 비중 (수량 패턴이 없는 날의 폴백)
         });
     }
-    return found?acc:null;
+    return found?{shares:acc,qty:qty,wk:new Date(base).toISOString().slice(0,10)}:null;
+}
+var YS_LEARN_WEEKS=8; // 최근 N주만 학습에 씀
+// 학습한 요일 dw의 등급별 1인 수량 패턴 {A:[6],...} (평균). 없으면 null
+function ysLearnQty(dw){
+    var Q=yesangLearn&&yesangLearn.qty;if(!Q)return null;
+    var o={},any=false;YS_GRADES.forEach(function(g){var e=Q[g]&&Q[g][String(dw)];if(e&&e.n>0&&ysSum(e.sum)>0){o[g]=e.sum.map(function(x){return x/e.n;});any=true;}});
+    return any?o:null;
 }
 async function ysLearnUpload(input){ // input = 파일 선택 칸 또는 끌어놓은 파일 배열
     var dropped=Array.isArray(input),files=dropped?input:Array.prototype.slice.call(input.files||[]);if(!dropped)input.value='';
     files=files.filter(function(f){return /\.xlsx?$/i.test(f.name);});
     if(!files.length){if(dropped)alert('엑셀 파일만 올릴 수 있습니다');return;}
-    var acc={},used=[],skipped=[];
+    // 주(예상 파일 B3 = 토요일) 단위로 쌓음: 같은 주를 다시 올리면 그 주만 교체, 최근 YS_LEARN_WEEKS주만 사용
+    var weeks=Object.assign({},(yesangLearn&&yesangLearn.weeks)||{}),used=[],skipped=[],repl=[];
     for(var f of files){
         try{
             var wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
             var ws=wb.Sheets['DB 예상안']||wb.Sheets[wb.SheetNames[0]],a=ws&&ysLearnFromSheet(ws);
             if(!a){skipped.push(f.name);continue;}
-            Object.keys(a).forEach(function(g){acc[g]=acc[g]||[0,0,0,0,0,0];a[g].forEach(function(x,s){acc[g][s]+=x;});});
+            if(weeks[a.wk])repl.push(a.wk);
+            weeks[a.wk]={file:f.name,qty:a.qty,shares:a.shares};
             used.push(f.name);
         }catch(e){skipped.push(f.name);}
     }
     if(!used.length){alert('학습할 수 있는 예상 파일이 없습니다.\n(DB 예상안 시트에 A등급·B등급 같은 블록과 1인 분배 숫자가 있어야 합니다)');return;}
+    var keys=Object.keys(weeks).sort(),dropped=keys.slice(0,Math.max(0,keys.length-YS_LEARN_WEEKS));
+    dropped.forEach(function(k){delete weeks[k];});keys=keys.slice(dropped.length);
+    var acc={},qty={};
+    keys.forEach(function(k){var W=weeks[k];
+        Object.keys(W.shares).forEach(function(g){acc[g]=acc[g]||[0,0,0,0,0,0];W.shares[g].forEach(function(x,s){acc[g][s]+=x;});});
+        Object.keys(W.qty).forEach(function(g){Object.keys(W.qty[g]).forEach(function(d){var e=W.qty[g][d],t=((qty[g]=qty[g]||{})[d]=qty[g][d]||{sum:[0,0,0,0,0,0],n:0});e.sum.forEach(function(x,s){t.sum[s]+=x;});t.n+=e.n;});});
+    });
     var shares={};YS_GRADES.forEach(function(g){var a=acc[g],t=a?ysSum(a):0;if(t>0)shares[g]=a.map(function(x){return Math.round(x/t*1000)/10;});});
-    yesangLearn={shares:shares,files:used,at:formatDate(new Date())};
+    yesangLearn={weeks:weeks,shares:shares,qty:qty,files:keys.map(function(k){return weeks[k].file;}),at:formatDate(new Date())};
     markDirty();idbPut('yesangLearn',yesangLearn);
     ysRenderLearnBox();refreshPredictions();
-    alert(used.length+'개 파일로 학습했습니다'+(skipped.length?'\n(제외: '+skipped.join(', ')+')':'')+(shares.D?'':'\nD등급은 파일에 없어 기본값(C등급 4·5계열 비율)을 씁니다'));
+    var md=function(k){return +k.slice(5,7)+'/'+(+k.slice(8,10));};
+    alert(used.length+'개 파일 추가 → 지금 학습 '+keys.length+'주 ('+md(keys[0])+' ~ '+md(keys[keys.length-1])+' 주)'
+        +(repl.length?'\n같은 주 다시 올림(교체): '+repl.map(md).join(', '):'')
+        +(dropped.length?'\n최근 '+YS_LEARN_WEEKS+'주만 사용 — 오래된 주 제외: '+dropped.map(md).join(', '):'')
+        +(skipped.length?'\n(제외: '+skipped.join(', ')+')':'')+(shares.D?'':'\nD등급은 파일에 없어 평일 C의 70%를 씁니다'));
 }
 function ysLearnReset(){if(!confirm('학습값을 지우고 기본값(2026년 7~10월 예상표 15주)으로 되돌릴까요?'))return;yesangLearn=null;markDirty();idbPut('yesangLearn',null);ysRenderLearnBox();refreshPredictions();}
 function ysRenderLearnBox(){
     var el=document.getElementById('ysLearnBox');if(!el)return;
     var sh=ysShares(),L=yesangLearn;
-    var h='<div style="font-size:0.8rem;color:#555;margin-bottom:6px;">하루 1인 총량은 A·B·C 동일, D는 평일에만 C의 70% · 휴일(토·일·공휴일)은 A~D 1인 총량 동일, A 0~5 / B 1~5 / C·D 2~5계열 균등 · 아래 평일 비중은 '+(L?'<b>'+L.files.length+'개 예상 파일</b>로 학습 ('+L.at+')':'<b>기본값</b> (2026년 7~10월 예상표 15주 분석)')+'</div>';
+    if(L&&L.qty){
+        // 수량 패턴 학습: 등급×요일 1인 수량 (계열별은 칸에 마우스)
+        var wks=Object.keys(L.weeks||{}).sort(),md=function(k){return +k.slice(5,7)+'/'+(+k.slice(8,10));};
+        var dws=[6,1,2,3,4,5],h='<div style="font-size:0.8rem;color:#555;margin-bottom:6px;"><b>수량 패턴</b> — '+(wks.length?'<b>'+wks.length+'주</b> 학습 (<span title="'+wks.map(function(k){return md(k)+' 주: '+L.weeks[k].file;}).join('\n').replace(/"/g,'&quot;')+'" style="text-decoration:underline dotted;">'+md(wks[0])+' ~ '+md(wks[wks.length-1])+' 주</span>, 최근 '+YS_LEARN_WEEKS+'주까지 · 마지막 '+L.at+')':L.files.length+'개 예상 파일로 학습 ('+L.at+')')+'. 그 요일에 수기로 준 1인 수량에서 시작해 이번 주 계열별 예상 DB에 맞게 늘리거나 줄입니다. 등급 간 1인 총량 비율도 파일을 따릅니다 (D등급이 파일에 없으면 평일 C의 70%). 평일 공휴일·학습 안 된 요일은 기존 규칙</div>';
+        h+='<div class="table-wrap"><table style="font-size:0.8rem;"><thead><tr><th>1인 수량 (평균)</th>'+dws.map(function(d){return'<th class="num">'+DAY_NAMES[d]+'</th>';}).join('')+'</tr></thead><tbody>';
+        YS_GRADES.forEach(function(g){h+='<tr><td>'+g+'등급</td>'+dws.map(function(d){var e=L.qty[g]&&L.qty[g][String(d)];if(!e||!e.n)return'<td class="num" style="color:#ccc;">-</td>';var a=e.sum.map(function(x){return x/e.n;});return'<td class="num" title="'+a.map(function(x,s){return s+'계열 '+(Math.round(x*10)/10);}).join(' · ')+' ('+e.n+'주)">'+(Math.round(ysSum(a)*10)/10)+'</td>';}).join('')+'</tr>';});
+        h+='</tbody></table></div>';
+        h+='<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><label class="btn btn-primary hw-drop" data-drop="ys" style="font-size:0.78rem;padding:5px 12px;cursor:pointer;border:2px dashed rgba(255,255,255,0.7);" title="클릭해서 고르거나 예상 파일을 여기에 끌어다 놓으세요">예상 파일 올려 학습 (클릭 또는 끌어놓기)<input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="ysLearnUpload(this)"></label>';
+        h+='<button class="btn" style="font-size:0.78rem;padding:5px 12px;background:#eee;color:#333;" onclick="ysLearnReset()">기본값으로</button>';
+        h+='<span style="font-size:0.75rem;color:#888;align-self:center;">매주 올리면 주 단위로 쌓입니다 (같은 주는 교체, 최근 '+YS_LEARN_WEEKS+'주 평균)</span></div>';
+        el.innerHTML=h;return;
+    }
+    var h='<div style="font-size:0.8rem;color:#555;margin-bottom:6px;">'+(L?'<span style="color:#c62828;">예전 방식(비중)으로 학습된 값입니다 — 예상 파일을 다시 올리면 수량 패턴으로 학습합니다.</span> ':'')+'하루 1인 총량은 A·B·C 동일, D는 평일에만 C의 70% · 휴일(토·일·공휴일)은 A~D 1인 총량 동일, A 0~5 / B 1~5 / C·D 2~5계열 균등 · 아래 평일 비중은 '+(L?'<b>'+L.files.length+'개 예상 파일</b>로 학습 ('+L.at+')':'<b>기본값</b> (2026년 7~10월 예상표 15주 분석)')+'</div>';
     h+='<div class="table-wrap"><table style="font-size:0.8rem;"><thead><tr><th>평일</th>'+TIERS.map(function(t){return'<th class="num">'+t+'</th>';}).join('')+'</tr></thead><tbody>';
     YS_GRADES.forEach(function(g){h+='<tr><td>'+g+'등급</td>'+sh[g].map(function(v,s){return'<td class="num" style="'+(YS_ELIG.wk[g].indexOf(s)<0?'color:#ccc;':'')+'">'+(YS_ELIG.wk[g].indexOf(s)<0?'-':v.toFixed(1)+'%')+'</td>';}).join('')+'</tr>';});
     h+='</tbody></table></div>';
